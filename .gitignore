@@ -1,11 +1,30 @@
-# Backend
+# ========================
+# Backend (Python/FastAPI)
+# ========================
 backend/.env
-backend/__pycache__/
 backend/venv/
+backend/env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
-# Frontend
+# Alembic & Database
+*.sqlite3
+*.db
+
+# ========================
+# Frontend (React/Vite)
+# ========================
 frontend/node_modules/
 frontend/dist/
+frontend/.env*
+frontend/.env.local
 
-# OS Files
+# ========================
+# OS & Editor Files
+# ========================
 .DS_Store
+Thumbs.db
+.vscode/
+.idea/
