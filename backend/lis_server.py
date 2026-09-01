@@ -1,6 +1,8 @@
 import socket
 import time
 import psycopg2
+import sys
+from psycopg2 import OperationalError
 from hl7_parser import parse_hl7_message
 
 # ==========================================
@@ -15,8 +17,24 @@ DB_NAME = "lis_marina_permata"
 DB_USER = "postgres"
 DB_PASS = "super-user"
 
-def save_hl7_to_db(raw_text, parsed_data, db_conn):
+def get_db_connection():
+    """Membuka koneksi baru ke database untuk mencegah timeout saat idle berjam-jam."""
+    try:
+        conn = psycopg2.connect(
+            host=DB_HOST, port=DB_PORT, database=DB_NAME, user=DB_USER, password=DB_PASS
+        )
+        return conn
+    except OperationalError as e:
+        print(f"[!] Gagal terhubung ke database: {e}")
+        return None
+
+def save_hl7_to_db(raw_text, parsed_data):
     """Menyimpan data HL7 ke skema PostgreSQL menggunakan psycopg2"""
+    db_conn = get_db_connection()
+    if not db_conn:
+        print("[-] Data gagal disimpan karena koneksi database terputus.")
+        return
+
     cursor = db_conn.cursor()
     id_instrument = 2  # Set ID = 2 untuk Mindray BC-5150
     
@@ -25,6 +43,8 @@ def save_hl7_to_db(raw_text, parsed_data, db_conn):
     
     if not res_data:
         print("[-] Tidak ada data numerik untuk disimpan.")
+        cursor.close()
+        db_conn.close()
         return
 
     try:
@@ -86,31 +106,28 @@ def save_hl7_to_db(raw_text, parsed_data, db_conn):
                 """,
                 (current_order_id, id_instrument, id_message, test_name, nilai, satuan, flag, ref_range)
             )
-            print(f"   => [DB HASIL] {test_name}: {nilai} {satuan} | Flag: {flag} | Rujukan: {ref_range}")
             
         db_conn.commit()
+        print(f"   => [SUCCESS] {len(res_data)} parameter berhasil disimpan.")
         
     except Exception as e:
         db_conn.rollback()
-        print(f"[!] Error DB: {e}")
+        print(f"[!] Error DB Transaksi: {e}")
     finally:
         cursor.close()
+        db_conn.close()
 
 # ==========================================
 # FUNGSI SERVER UTAMA (MODE CLIENT HL7)
 # ==========================================
 def lis_client_hl7():
-    print("[*] Menghubungkan ke PostgreSQL (Skema Final)...")
-    db_conn = psycopg2.connect(
-        host=DB_HOST, port=DB_PORT, database=DB_NAME, user=DB_USER, password=DB_PASS
-    )
-    print("[+] Database Terhubung!")
+    print("[*] LIS Server (HL7 Client) mulai berjalan...")
     
     while True:
-        print(f"\n[*] Mencoba menghubungi Mindray di {MINDRAY_IP}:{MINDRAY_PORT}...")
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(5.0) 
-            try:
+        try:
+            print(f"\n[*] Mencoba menghubungi Mindray di {MINDRAY_IP}:{MINDRAY_PORT}...")
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(5.0) 
                 s.connect((MINDRAY_IP, MINDRAY_PORT))
                 print("[+] Tersambung ke alat Mindray! Sistem standby menerima data...")
                 
@@ -124,25 +141,32 @@ def lis_client_hl7():
                         break
                     
                     if len(data) == 1 and data == b'\x02':
-                        continue # Abaikan heartbeat (STX tunggal)
+                        continue
                     
                     buffer_data += data.decode('utf-8', errors='ignore')
                     
-                    # HL7 biasanya diakhiri dengan FS (\x1c) lalu CR (\r)
-                    if '\x1c' in buffer_data or '\r\n\r\n' in buffer_data or 'F=' in buffer_data:
+                    # LOGIKA BATCH TRANSMISSION: Memecah antrean data pasien berdasarkan karakter \x1c
+                    while '\x1c' in buffer_data:
+                        pesan_utuh, sisa_antrean = buffer_data.split('\x1c', 1)
                         print("\n[*] Paket HL7 utuh diterima. Memproses...")
                         
-                        # Parse dan Simpan
-                        parsed_data = parse_hl7_message(buffer_data)
-                        save_hl7_to_db(buffer_data, parsed_data, db_conn)
+                        parsed_data = parse_hl7_message(pesan_utuh)
+                        save_hl7_to_db(pesan_utuh, parsed_data)
                         
-                        buffer_data = "" # Bersihkan buffer untuk pasien selanjutnya
+                        buffer_data = sisa_antrean 
                         
-            except ConnectionRefusedError:
-                print("[-] Koneksi ditolak oleh mesin.")
-            except Exception as e:
-                print(f"[!] Koneksi terputus: {e}")
-                
+        except ConnectionRefusedError:
+            print("[-] Koneksi ditolak. Mesin mungkin sedang mati atau kabel tercabut.")
+        except TimeoutError:
+            print("[-] Timeout jaringan. Tidak dapat menemukan IP mesin.")
+        except ConnectionResetError:
+            print("[!] Koneksi diputus paksa oleh mesin (Connection Reset).")
+        except KeyboardInterrupt:
+            print("\n[*] LIS Server dimatikan secara manual. Sampai jumpa!")
+            sys.exit(0)
+        except Exception as e:
+            print(f"[!] Error jaringan tidak terduga: {e}")
+            
         print("[*] Mencoba menyambung kembali dalam 5 detik...")
         time.sleep(5)
 
