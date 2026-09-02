@@ -59,7 +59,11 @@ def save_hl7_to_db(raw_text, parsed_data):
         nomor_rm = pat_data.get("nomor_rm", "UNKNOWN")
         nama_pasien = pat_data.get("nama_lengkap", "UNKNOWN")
         
-        cursor.execute("SELECT id_pasien FROM patients WHERE nomor_rm = %s", (nomor_rm,))
+        # Mencegah pasien dengan RM sama ("MR") tapi nama berbeda saling menimpa
+        cursor.execute(
+            "SELECT id_pasien FROM patients WHERE nomor_rm = %s AND nama_lengkap = %s", 
+            (nomor_rm, nama_pasien)
+        )
         row = cursor.fetchone()
         
         if row:
@@ -70,14 +74,23 @@ def save_hl7_to_db(raw_text, parsed_data):
                 (nomor_rm, nama_pasien)
             )
             id_pasien = cursor.fetchone()[0]
-            
-        # 3. INSERT ORDER BARU
+
+        # 3. CEK ATAU INSERT ORDER BARU (Mencegah Duplikasi Comm. All)
         cursor.execute(
-            "INSERT INTO orders (id_pasien) VALUES (%s) RETURNING id_order",
+            "SELECT id_order FROM orders WHERE id_pasien = %s ORDER BY id_order DESC LIMIT 1", 
             (id_pasien,)
         )
-        current_order_id = cursor.fetchone()[0]
+        row_order = cursor.fetchone()
         
+        if row_order:
+            current_order_id = row_order[0]
+        else:
+            cursor.execute(
+                "INSERT INTO orders (id_pasien) VALUES (%s) RETURNING id_order",
+                (id_pasien,)
+            )
+            current_order_id = cursor.fetchone()[0]
+            
         print(f"\n   => [DB PASIEN] {nama_pasien} (RM: {nomor_rm}) | Order ID: {current_order_id}")
 
         # 4. UPSERT HASIL LAB (RESULTS)

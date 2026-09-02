@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Demo Sync LIS Mindray</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 30px; background-color: #f4f7f6; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        button { padding: 15px 30px; font-size: 16px; font-weight: bold; background-color: #0d6efd; color: white; border: none; border-radius: 5px; cursor: pointer; transition: 0.2s; }
+        button:hover { background-color: #0b5ed7; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #dee2e6; padding: 12px; text-align: left; }
+        th { background-color: #f8f9fa; }
+        #status { margin-top: 15px; font-weight: bold; color: #198754; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Simulasi Tarik Data Mesin (Ilusi UX)</h2>
+        <p><b>Instruksi Demo:</b> Tekan fitur "Comm. All" di mesin Mindray BC-5150. Setelah selesai, klik tombol di bawah untuk menyinkronkan data.</p>
+        
+        <button onclick="syncData()">🔄 Sinkronisasi Data Mesin</button>
+        <div id="status"></div>
+        
+        <table id="resultTable" style="display: none;">
+            <thead>
+                <tr>
+                    <th>Waktu Hasil</th>
+                    <th>No. RM</th>
+                    <th>Nama Pasien</th>
+                    <th>Parameter</th>
+                    <th>Nilai</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
+
+    <script>
+        async function syncData() {
+            const status = document.getElementById('status');
+            const table = document.getElementById('resultTable');
+            const tbody = document.getElementById('tableBody');
+            
+            status.innerHTML = "⏳ Menghubungi antrean mesin...";
+            status.style.color = "#0dcaf0";
+            tbody.innerHTML = "";
+            table.style.display = "none";
+
+            try {
+                // Menembak API lokal kita, BUKAN menembak mesin secara langsung
+                const response = await fetch('http://127.0.0.1:8000/api/sync-machine-data');
+                const result = await response.json();
+
+                if (result.status === 'success' && result.data.length > 0) {
+                    result.data.forEach(row => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td>${row.waktu_hasil}</td>
+                            <td>${row.nomor_rm}</td>
+                            <td>${row.nama_lengkap}</td>
+                            <td><b>${row.parameter_tes}</b></td>
+                            <td>${row.nilai_hasil} ${row.satuan}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                    status.innerHTML = "✅ " + result.message;
+                    status.style.color = "#198754";
+                    table.style.display = "table";
+                } else {
+                    status.innerHTML = "⚠️ Tidak ada data baru di antrean.";
+                    status.style.color = "#ffc107";
+                }
+            } catch (error) {
+                status.innerHTML = "❌ Error: Gagal menghubungi API server. Pastikan uvicorn berjalan.";
+                status.style.color = "#dc3545";
+            }
+        }
+    </script>
+</body>
+</html>
