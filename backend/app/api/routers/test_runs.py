@@ -23,3 +23,17 @@ def unfinalize_test_run(run_id: int, db: Session = Depends(get_db)):
     """Unset the final state of a TestRun to allow another run to be finalized."""
     return TestRunService.unfinalize_run(db, run_id)
 
+@router.post("/test-runs/{run_id}/delivery/start", response_model=TestRunResponse)
+def start_test_run_delivery(run_id: int, db: Session = Depends(get_db)):
+    """Start the delivery process for a final TestRun."""
+    return TestRunService.start_delivery(db, run_id)
+
+@router.post("/test-runs/{run_id}/delivery/success", response_model=TestRunResponse)
+def mark_test_run_delivery_success(run_id: int, db: Session = Depends(get_db)):
+    """Mark a TestRun as successfully delivered."""
+    return TestRunService.mark_delivery_delivered(db, run_id)
+
+@router.post("/test-runs/{run_id}/delivery/fail", response_model=TestRunResponse)
+def mark_test_run_delivery_fail(run_id: int, db: Session = Depends(get_db)):
+    """Mark a TestRun delivery as failed."""
+    return TestRunService.mark_delivery_failed(db, run_id)
