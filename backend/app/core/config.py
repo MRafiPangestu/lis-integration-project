@@ -1,3 +1,4 @@
+from pathlib import Path
 from pydantic_settings import BaseSettings
 
 
@@ -5,7 +6,7 @@ class Settings(BaseSettings):
     # Database
     DB_HOST: str = "localhost"
     DB_PORT: int = 5432
-    DB_NAME: str = "lis_marina_permata"
+    DB_NAME: str = "lis_marina_permata_dev"
     DB_USER: str = "postgres"
     DB_PASSWORD: str = ""
 
@@ -21,7 +22,7 @@ class Settings(BaseSettings):
     API_VERSION: str = "1.0.0"
 
     class Config:
-        env_file = ".env"
+        env_file = str(Path(__file__).resolve().parent.parent.parent / ".env")
         env_file_encoding = "utf-8"
 
 
