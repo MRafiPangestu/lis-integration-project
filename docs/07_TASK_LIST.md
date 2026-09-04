@@ -30,13 +30,13 @@ Create the final PostgreSQL schema that implements the documented data hierarchy
   - [x] Verify `id_instrument` and `id_message` are on `test_runs`, not `results`
   - [x] Verify `delivery_status` and `delivered_at` are on `test_runs`
 
-- [ ] **M1.2** — Execute migration on development database
-  - [ ] Back up existing database (if data exists)
-  - [ ] Run `alembic upgrade head` to apply `b1f9dbe772fa_M1_initial_schema`
-  - [ ] Verify all tables created correctly
-  - [ ] Verify all constraints enforced
-  - [ ] Verify Partial Unique Index works (test inserting two `is_final = TRUE` for one order — must fail)
-  - [ ] Verify `UNIQUE(id_run, parameter_tes)` works
+- [x] **M1.2** — Execute migration on development database
+  - [x] Back up existing database (if data exists)
+  - [x] Run `alembic upgrade head` to apply `b1f9dbe772fa_M1_initial_schema`
+  - [x] Verify all tables created correctly
+  - [x] Verify all constraints enforced
+  - [x] Verify Partial Unique Index works (test inserting two `is_final = TRUE` for one order — must fail)
+  - [x] Verify `UNIQUE(id_run, parameter_tes)` works
 
 - [ ] **M1.3** — Seed essential master data
   - [ ] Insert 9 instrument records into `instruments`
@@ -128,25 +128,25 @@ Refactor the existing Integration Service (`alt_server.py`) to use the new datab
 
 ## Tasks
 
-- [ ] **M3.1** — Refactor data persistence to new schema
-  - [ ] Replace `INSERT INTO orders (id_pasien)` with Visit + Order creation
-  - [ ] Create `test_runs` record for each instrument message
-  - [ ] Insert results with `id_run` FK (not `id_order`)
-  - [ ] Remove `ON CONFLICT DO UPDATE` — use plain INSERT
-  - [ ] Compute `run_sequence` as MAX+1 per order
-  - [ ] Link `id_instrument` and `id_message` to `test_runs`
+- [x] **M3.1** — Refactor data persistence to new schema
+  - [x] Replace `INSERT INTO orders (id_pasien)` with Visit + Order creation
+  - [x] Create `test_runs` record for each instrument message
+  - [x] Insert results with `id_run` FK (not `id_order`)
+  - [x] Remove `ON CONFLICT DO UPDATE` — use plain INSERT
+  - [x] Compute `run_sequence` as MAX+1 per order
+  - [x] Link `id_instrument` and `id_message` to `test_runs`
 
-- [ ] **M3.2** — Use SQLAlchemy session from M2
-  - [ ] Replace raw `psycopg2` with SQLAlchemy ORM
-  - [ ] Use proper transaction management (session.commit / rollback)
+- [x] **M3.2** — Use SQLAlchemy session from M2
+  - [x] Replace raw `psycopg2` with SQLAlchemy ORM
+  - [x] Use proper transaction management (session.commit / rollback)
 
-- [ ] **M3.3** — Configuration cleanup
-  - [ ] Read all config from `.env` / settings
-  - [ ] Remove hardcoded DB credentials and instrument IP
+- [x] **M3.3** — Configuration cleanup
+  - [x] Read all config from `.env` / settings
+  - [x] Remove hardcoded DB credentials and instrument IP
 
-- [ ] **M3.4** — Verify immutability
-  - [ ] Confirm re-run creates a new Test Run (not overwrite)
-  - [ ] Confirm previous Test Run results are untouched
+- [x] **M3.4** — Verify immutability
+  - [x] Confirm re-run creates a new Test Run (not overwrite)
+  - [x] Confirm previous Test Run results are untouched
 
 ## Dependencies
 
@@ -172,19 +172,19 @@ Implement the core business logic for Test Run management: final run selection (
 
 ## Tasks
 
-- [ ] **M4.1** — Final Run selection service
-  - [ ] Implement `set_final_run(order_id, run_id)` — atomic swap
-  - [ ] Unset previous final (if any) within same transaction
-  - [ ] Verify Partial Unique Index protects against race conditions
-  - [ ] Ensure clinical data is not modified during finalization
+- [x] **M4.1** — Final Run selection service
+  - [x] Implement explicit finalization policy (HTTP 409 if another run is already final)
+  - [x] Require client to explicitly unfinalize previous final run before setting a new one
+  - [x] Verify Partial Unique Index protects against race conditions
+  - [x] Ensure clinical data is not modified during finalization
 
 - [ ] **M4.2** — Delivery status lifecycle
   - [ ] Implement status transitions: `pending → sending → delivered / failed`
   - [ ] Ensure only final runs can be sent to SIMRS
 
-- [ ] **M4.3** — Immutability enforcement at service layer
-  - [ ] Ensure no service method can update clinical result fields
-  - [ ] Ensure no API-accessible mutation path for clinical data
+- [x] **M4.3** — Immutability enforcement at service layer
+  - [x] Ensure no service method can update clinical result fields
+  - [x] Ensure no API-accessible mutation path for clinical data
 
 ## Dependencies
 
@@ -193,7 +193,7 @@ Implement the core business logic for Test Run management: final run selection (
 
 ## Acceptance Criteria
 
-- Selecting a final run atomically swaps `is_final` flags.
+- Selecting a final run enforces explicit transition (rejects if another run is final).
 - Database prevents two final runs for the same order.
 - Delivery status transitions correctly.
 - No code path exists to mutate `nilai_hasil`, `satuan`, `flag_abnormalitas`, `parameter_tes`, `reference_range_snapshot`, or `waktu_hasil`.
@@ -213,10 +213,11 @@ Build the FastAPI REST endpoints for the dashboard and external integrations.
   - [ ] Filter by instrument, date, patient/RM, delivery status, final status
   - [ ] Include Patient, Visit, Order, Test Run context
 
-- [ ] **M5.2** — Test Run API
-  - [ ] `GET /api/orders/{id}/test-runs` — list test runs for an order
-  - [ ] `PUT /api/test-runs/{id}/set-final` — set final run (calls M4 service)
-  - [ ] Response includes updated test run state
+- [x] **M5.2** — Test Run API
+  - [x] `GET /api/orders/{order_id}/test-runs` — list test runs for an order
+  - [x] `POST /api/test-runs/{run_id}/finalize` — set final run (calls M4 service)
+  - [x] `POST /api/test-runs/{run_id}/unfinalize` — explicit unfinalize run (calls M4 service)
+  - [x] Response includes updated test run state
 
 - [ ] **M5.3** — Historical Result API
   - [ ] `GET /api/patients/{nomor_rm}/history` — result history by Nomor RM
@@ -457,8 +458,8 @@ M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6
 |---|---|
 | M1 — Database Foundation | ⏳ In Progress (migration generated; execution pending approval) |
 | M2 — Backend Foundation | ✅ Complete |
-| M3 — Integration Service | Not Started |
-| M4 — Test Run Domain | Not Started |
+| M3 — Integration Service | ✅ Complete |
+| M4 — Test Run Domain | ⏳ In Progress |
 | M5 — API | Not Started |
 | M6 — SIMRS | Not Started |
 | M7 — Frontend | Not Started |
