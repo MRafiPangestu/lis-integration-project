@@ -178,9 +178,9 @@ Implement the core business logic for Test Run management: final run selection (
   - [x] Verify Partial Unique Index protects against race conditions
   - [x] Ensure clinical data is not modified during finalization
 
-- [ ] **M4.2** — Delivery status lifecycle
-  - [ ] Implement status transitions: `pending → sending → delivered / failed`
-  - [ ] Ensure only final runs can be sent to SIMRS
+- [x] **M4.2** — Delivery status lifecycle
+  - [x] Implement status transitions: `pending → sending → delivered / failed`
+  - [x] Ensure only final runs can be sent to SIMRS
 
 - [x] **M4.3** — Immutability enforcement at service layer
   - [x] Ensure no service method can update clinical result fields
@@ -459,7 +459,7 @@ M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6
 | M1 — Database Foundation | ⏳ In Progress (migration generated; execution pending approval) |
 | M2 — Backend Foundation | ✅ Complete |
 | M3 — Integration Service | ✅ Complete |
-| M4 — Test Run Domain | ⏳ In Progress |
+| M4 — Test Run Domain | ✅ Complete |
 | M5 — API | Not Started |
 | M6 — SIMRS | Not Started |
 | M7 — Frontend | Not Started |
