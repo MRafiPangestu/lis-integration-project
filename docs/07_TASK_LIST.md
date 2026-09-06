@@ -38,10 +38,13 @@ Create the final PostgreSQL schema that implements the documented data hierarchy
   - [x] Verify Partial Unique Index works (test inserting two `is_final = TRUE` for one order — must fail)
   - [x] Verify `UNIQUE(id_run, parameter_tes)` works
 
-- [ ] **M1.3** — Seed essential master data
-  - [ ] Insert 9 instrument records into `instruments`
-  - [ ] Insert basic `units` records (IGD, IRJ, etc.)
-  - [ ] Insert basic `test_groups` records (Hematologi, Kimia Darah, etc.)
+- [x] **M1.3** — Seed essential master data
+  - [x] Insert 9 instrument identities into `instruments`
+  - [x] Seed BC-5150 with field-verified HL7 / TCP/IP configuration
+  - [x] Insert 10 confirmed `units` records
+  - [x] Insert 6 primary `test_groups` records
+  - [x] Implement idempotent seed behavior
+  - [x] Ensure strict development database safety protection
 
 ## Dependencies
 
@@ -456,7 +459,7 @@ M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6
 
 | Milestone | Status |
 |---|---|
-| M1 — Database Foundation | ⏳ In Progress (migration generated; execution pending approval) |
+| M1 — Database Foundation | ✅ Complete |
 | M2 — Backend Foundation | ✅ Complete |
 | M3 — Integration Service | ✅ Complete |
 | M4 — Test Run Domain | ✅ Complete |
