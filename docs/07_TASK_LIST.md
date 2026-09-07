@@ -256,20 +256,20 @@ Implement the SIMRS push gateway: send final Test Run results to the SIMRS endpo
 
 ## Tasks
 
-- [ ] **M6.1** — SIMRS integration module
-  - [ ] Build HTTP POST client for SIMRS endpoint
-  - [ ] Construct payload from final Test Run results
-  - [ ] Handle SIMRS response (success / failure)
+- [x] **M6.1** — SIMRS integration module
+  - [x] Build HTTP POST client for SIMRS endpoint
+  - [x] Construct payload from final Test Run results
+  - [x] Handle SIMRS response (success / failure)
 
-- [ ] **M6.2** — Delivery workflow
-  - [ ] `POST /api/test-runs/{id}/sync-simrs` — trigger push
-  - [ ] Update `delivery_status` through lifecycle
-  - [ ] Record `delivered_at` timestamp on success
-  - [ ] Handle retry on failure
+- [x] **M6.2** — Delivery workflow
+  - [x] `POST /api/test-runs/{id}/sync-simrs` — trigger push
+  - [x] Update `delivery_status` through lifecycle
+  - [x] Record `delivered_at` timestamp on success
+  - [x] Handle retry on failure
 
-- [ ] **M6.3** — Delivery status API
-  - [ ] Expose delivery status in Test Run API responses
-  - [ ] Prevent duplicate concurrent sends
+- [x] **M6.3** — Delivery status API
+  - [x] Expose delivery status in Test Run API responses
+  - [x] Prevent duplicate concurrent sends
 
 ## Dependencies
 
@@ -464,7 +464,7 @@ M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6
 | M3 — Integration Service | ✅ Complete |
 | M4 — Test Run Domain | ✅ Complete |
 | M5 — API | 🟢 Complete |
-| M6 — SIMRS | Not Started |
+| M6 — SIMRS | 🟢 Complete |
 | M7 — Frontend | Not Started |
 | M8 — Multi-Instrument | Not Started |
 | M9 — QA & Hardening | Not Started |
