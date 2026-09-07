@@ -3,12 +3,9 @@ import time
 import threading
 from datetime import datetime
 from typing import Callable
-from sqlalchemy import update
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.integration.protocols import InstrumentTransport
-from app.core.database import SessionLocal
-from app.models.instrument import Instrument
+from app.integration.instruments import write_instrument_status
 
 class InstrumentClient(InstrumentTransport):
     def __init__(self, host: str, port: int, instrument_id: int):
@@ -20,19 +17,7 @@ class InstrumentClient(InstrumentTransport):
         self._stop_event = threading.Event()
 
     def _update_status(self, status: str) -> None:
-        try:
-            with SessionLocal() as session:
-                # Use bulk update for transaction safety and efficiency
-                stmt = update(Instrument).where(
-                    Instrument.id_instrument == self.instrument_id
-                ).values(
-                    connection_status=status,
-                    last_status_at=datetime.utcnow()
-                )
-                session.execute(stmt)
-                session.commit()
-        except SQLAlchemyError as e:
-            print(f"[!] Failed to update status to {status}: {e}")
+        write_instrument_status(self.instrument_id, status)
 
     def stop(self):
         self._stop_event.set()
