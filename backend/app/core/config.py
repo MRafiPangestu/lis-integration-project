@@ -1,5 +1,6 @@
 from pathlib import Path
 from pydantic_settings import BaseSettings
+from typing import Optional
 
 
 class Settings(BaseSettings):
@@ -20,6 +21,12 @@ class Settings(BaseSettings):
     # API
     API_TITLE: str = "LIS API Marina Permata"
     API_VERSION: str = "1.0.0"
+
+    # SIMRS Integration
+    SIMRS_BASE_URL: Optional[str] = None
+    SIMRS_ENDPOINT: str = "/api/v1/lis/results"
+    SIMRS_TIMEOUT: int = 15
+    SIMRS_API_KEY: Optional[str] = None
 
     class Config:
         env_file = str(Path(__file__).resolve().parent.parent.parent / ".env")
