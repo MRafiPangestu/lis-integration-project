@@ -358,18 +358,33 @@ Extend the Integration Service to handle concurrent connections from all 9 instr
 
 ## Tasks
 
-- [ ] **M8.1** — Instrument Configuration & Connection Lifecycle
-  - [ ] Resolve and document the configuration source for instrument connectivity; extend application Settings/configuration rather than adding a new configuration-management subsystem
-  - [ ] Support per-instrument endpoint information required by the current implementation (host, port, protocol, instrument identity)
-  - [ ] Allow `mode` as configuration metadata, but support only `client` mode in M8; defer listener/server mode until field verification proves it is required
-  - [ ] Quarantine or remove the legacy single-instrument files (`alt_server.py`, `lis_server.py`, `api.py`, `hl7_parser.py`) so they cannot be confused with the active integration path — before implementation proceeds
-  - [ ] Remove hardcoded parser selection from the integration path
-  - [ ] Remove the hardcoded `BC5150-` identity prefix from generic ingestion logic
-  - [ ] Resolve instrument identity/configuration from instrument-specific configuration rather than fixed numeric IDs
-  - [ ] Run one thread per instrument, compatible with the existing blocking-socket and synchronous SQLAlchemy architecture
-  - [ ] Fault isolation: one instrument's failure must not affect others
-  - [ ] Implement reconnect behavior and persist connection status
-  - [ ] Remove the development-database-only guard that currently prevents status persistence outside the dev database
+- [x] **M8.1** — Instrument Configuration & Connection Lifecycle
+  - [x] Resolve and document the configuration source for instrument connectivity; extend application Settings/configuration rather than adding a new configuration-management subsystem
+    - Implemented in M8.1-A (fc78533): InstrumentConfig contract, load_instrument_configs, Settings.instruments property
+  - [x] Support per-instrument endpoint information required by the current implementation (host, port, protocol, instrument identity)
+    - Implemented in M8.1-A: InstrumentConfig with host, port, parser_key, identity_prefix fields
+  - [x] Allow `mode` as configuration metadata, but support only `client` mode in M8; defer listener/server mode until field verification proves it is required
+    - Implemented in M8.1-A: mode field with validator restricting to "client" mode
+  - [x] Quarantine or remove the legacy single-instrument files (`alt_server.py`, `lis_server.py`, `api.py`, `hl7_parser.py`) so they cannot be confused with the active integration path — before implementation proceeds
+    - Completed in M8.1-A: moved to backend/legacy/ as renames
+  - [x] Remove hardcoded parser selection from the integration path
+    - Completed in M8.1-A/B: runtime parser resolution via resolve_parser() and parser_key config
+  - [x] Remove the hardcoded `BC5150-` identity prefix from generic ingestion logic
+    - Completed in M8.1-A: identity_prefix is per-instrument from config
+  - [x] Resolve instrument identity/configuration from instrument-specific configuration rather than fixed numeric IDs
+    - Implemented in M8.1-A: RuntimeInstrument binds config to resolved Instrument record via instrument_name
+  - [x] Run one thread per instrument, compatible with the existing blocking-socket and synchronous SQLAlchemy architecture
+    - Implemented in M8.1-B (e3a2495): Supervisor.start() launches one worker thread per enabled instrument
+  - [x] Fault isolation: one instrument's failure must not affect others
+    - Implemented in M8.1-B: Supervisor detects dead workers and restarts only the affected instrument's thread
+  - [x] Implement reconnect behavior and persist connection status
+    - Completed in M8.1-A/B: InstrumentClient.recv_loop() handles reconnect; write_instrument_status() persists connection_status
+  - [x] Remove the development-database-only guard that currently prevents status persistence outside the dev database
+    - Completed in M8.1-A/B: write_instrument_status() no longer checks database type; status writes work on all environments
+
+**Completion Notes:**
+- **M8.1-A** (fc78533): Instrument Configuration Contract & Inventory — InstrumentConfig, runtime identity resolution, parser binding, legacy code quarantine. 34 tests pass.
+- **M8.1-B** (e3a2495): Multi-Instrument Supervisor & Runtime Lifecycle — Worker lifecycle management, dead-worker detection/restart, deterministic shutdown. 47 tests pass.
 
 - [ ] **M8.2** — Ingestion Hardening & Classification Mechanism
   - [ ] Verify the existing Order → Test Run → Result hierarchy and `run_sequence` behavior (always insert new runs, never overwrite); preserve current semantics
@@ -525,6 +540,7 @@ M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6
 | M5 — API | 🟢 Complete |
 | M6 — SIMRS | 🟢 Complete |
 | M7 — Frontend | 🟢 Complete |
-| M8 — Multi-Instrument | Not Started |
+| M8.1 — Instrument Config & Supervisor | ✅ Complete |
+| M8.2–M8.5 — Ingestion Hardening & Dashboard | In Progress |
 | M9 — QA & Hardening | Not Started |
 
