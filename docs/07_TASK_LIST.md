@@ -211,10 +211,10 @@ Build the FastAPI REST endpoints for the dashboard and external integrations.
 
 ## Tasks
 
-- [ ] **M5.1** — Result retrieval API
-  - [ ] `GET /api/results` — paginated, filterable result list
-  - [ ] Filter by instrument, date, patient/RM, delivery status, final status
-  - [ ] Include Patient, Visit, Order, Test Run context
+- [x] **M5.1** — Result retrieval API
+  - [x] `GET /api/results` — paginated, filterable result list
+  - [x] Filter by instrument, date, patient/RM, delivery status, final status
+  - [x] Include Patient, Visit, Order, Test Run context
 
 - [x] **M5.2** — Test Run API
   - [x] `GET /api/orders/{order_id}/test-runs` — list test runs for an order
@@ -222,17 +222,17 @@ Build the FastAPI REST endpoints for the dashboard and external integrations.
   - [x] `POST /api/test-runs/{run_id}/unfinalize` — explicit unfinalize run (calls M4 service)
   - [x] Response includes updated test run state
 
-- [ ] **M5.3** — Historical Result API
-  - [ ] `GET /api/patients/{nomor_rm}/history` — result history by Nomor RM
-  - [ ] Returns Visit → Order → Test Run → Result hierarchy
+- [x] **M5.3** — Historical Result API
+  - [x] `GET /api/patients/{nomor_rm}/history` — result history by Nomor RM
+  - [x] Returns Visit → Order → Test Run → Result hierarchy
 
-- [ ] **M5.4** — Instrument status API
-  - [ ] `GET /api/instruments/status` — connection state of all instruments
-  - [ ] Design Integration Service → FastAPI status communication mechanism
+- [x] **M5.4** — Instrument status API
+  - [x] `GET /api/instruments/status` — connection state of all instruments
+  - [x] Design Integration Service → FastAPI status communication mechanism
 
-- [ ] **M5.5** — Pydantic schemas
-  - [ ] Request/response schemas for all endpoints
-  - [ ] Ensure clinical fields are read-only in response schemas
+- [x] **M5.5** — Pydantic schemas
+  - [x] Request/response schemas for all endpoints
+  - [x] Ensure clinical fields are read-only in response schemas
 
 ## Dependencies
 
@@ -463,7 +463,7 @@ M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6
 | M2 — Backend Foundation | ✅ Complete |
 | M3 — Integration Service | ✅ Complete |
 | M4 — Test Run Domain | ✅ Complete |
-| M5 — API | Not Started |
+| M5 — API | 🟢 Complete |
 | M6 — SIMRS | Not Started |
 | M7 — Frontend | Not Started |
 | M8 — Multi-Instrument | Not Started |
