@@ -25,7 +25,7 @@ Create the final PostgreSQL schema that implements the documented data hierarchy
   - [x] Define all UNIQUE constraints (`nomor_rm`, `no_registrasi`, `kode_tes`, `kode_unit`)
   - [x] Define `UNIQUE(id_run, parameter_tes)` on `results`
   - [x] Define Partial Unique Index: `idx_unique_final_run_per_order` on `test_runs(id_order) WHERE is_final = TRUE`
-  - [x] Define recommended indexes for query performance
+  - [ ] Define recommended indexes for query performance — deferred; the M1 migration created only the uniqueness / partial-unique indexes. Non-unique query-performance indexes are created by the milestone that needs them (see M8.4).
   - [x] Verify no `status_hasil` field exists
   - [x] Verify `id_instrument` and `id_message` are on `test_runs`, not `results`
   - [x] Verify `delivery_status` and `delivered_at` are on `test_runs`
@@ -350,45 +350,100 @@ Build the React dashboard per the Design System specification, implementing all 
 
 ---
 
-# M8 — Multi-Instrument Support
+# M8 — Multi-Instrument Support & Enterprise Dashboard
 
 ## Objective
 
-Extend the Integration Service to handle concurrent connections from all 9 instruments with fault isolation.
+Extend the Integration Service to handle concurrent connections from all 9 instruments, ensure clinical ingestion correctness, and provide an enterprise Patient Overview dashboard.
 
 ## Tasks
 
-- [ ] **M8.1** — Concurrent connection architecture
-  - [ ] Refactor Integration Service for async / multi-threaded instrument handling
-  - [ ] One connection handler per instrument
-  - [ ] Fault isolation: one instrument failure must not affect others
+- [ ] **M8.1** — Instrument Configuration & Connection Lifecycle
+  - [ ] Resolve and document the configuration source for instrument connectivity; extend application Settings/configuration rather than adding a new configuration-management subsystem
+  - [ ] Support per-instrument endpoint information required by the current implementation (host, port, protocol, instrument identity)
+  - [ ] Allow `mode` as configuration metadata, but support only `client` mode in M8; defer listener/server mode until field verification proves it is required
+  - [ ] Quarantine or remove the legacy single-instrument files (`alt_server.py`, `lis_server.py`, `api.py`, `hl7_parser.py`) so they cannot be confused with the active integration path — before implementation proceeds
+  - [ ] Remove hardcoded parser selection from the integration path
+  - [ ] Remove the hardcoded `BC5150-` identity prefix from generic ingestion logic
+  - [ ] Resolve instrument identity/configuration from instrument-specific configuration rather than fixed numeric IDs
+  - [ ] Run one thread per instrument, compatible with the existing blocking-socket and synchronous SQLAlchemy architecture
+  - [ ] Fault isolation: one instrument's failure must not affect others
+  - [ ] Implement reconnect behavior and persist connection status
+  - [ ] Remove the development-database-only guard that currently prevents status persistence outside the dev database
 
-- [ ] **M8.2** — Per-instrument configuration
-  - [ ] Configuration file/table for IP, port, protocol, mode per instrument
-  - [ ] Dynamic instrument loading
+- [ ] **M8.2** — Ingestion Hardening & Classification Mechanism
+  - [ ] Verify the existing Order → Test Run → Result hierarchy and `run_sequence` behavior (always insert new runs, never overwrite); preserve current semantics
+  - [ ] Verify the existing exact-retransmission idempotency check and retain it as foundational protection
+  - [ ] Guarantee raw-message persistence on every processing path, including unexpected exceptions (a rollback can currently lose the raw message)
+  - [ ] Make failure ACK behavior independent of parser success, so malformed or unexpected input still produces an appropriate instrument response
+  - [ ] Ensure unexpected `run_sequence` uniqueness errors do not silently discard the clinical message
+  - [ ] Do not redesign concurrency or add locking unless strictly necessary
+  - Classification mechanism:
+    - [ ] Implement a classification mechanism (not a vendor-specific rule) supporting patient-result, non-patient/background, unclassified, and unparseable states where appropriate
+    - [ ] Record a traceable classification reason/rule for each message
+    - [ ] Fail closed: when classification is uncertain, do not treat the message as a patient result
+    - [ ] Unclassified messages remain raw-persisted but must not create clinical Test Runs or Results
+    - [ ] Capture and preserve `IS`-typed OBX metadata currently discarded by the parser, for future evidence-based classification
+  - Specimen / visit identity:
+    - [ ] Investigate and define the specimen → visit/order identity rule for messages without a patient identifier; preserve legitimate repeat-run semantics; resolve the collision risk before production multi-instrument ingestion; base the rule on verified instrument behavior and clinical requirements (no date-scoped or arbitrary replacement key)
+  - Ingestion-critical tests:
+    - [ ] Parser behavior
+    - [ ] Classification mechanism and fail-closed handling
+    - [ ] Exact-retransmission behavior
+    - [ ] `run_sequence` behavior
+    - [ ] Error / rollback path for raw-message persistence
 
-- [ ] **M8.3** — ASTM parser
-  - [ ] Implement ASTM parser for applicable instruments
-  - [ ] Integrate with message processing pipeline
+- [ ] **M8.2b** — Field-Verified BC-5150 Classification Rule
+  - [ ] **BLOCKED** — pending field evidence or recovered PoC evidence of a BC-5150 background / QC / calibration sample (none is currently committed to the repository)
+  - [ ] Once evidence exists, define the concrete BC-5150 classification rule against it
+  - [ ] Do not commit a hardcoded background formula (e.g. `OBR-3 == "Background"`) or any other vendor-specific rule until evidence exists
 
-- [ ] **M8.4** — Instrument status reporting
-  - [ ] Report `Connected / Reconnecting / Disconnected` per instrument
-  - [ ] Communicate status to FastAPI (mechanism defined in M5.4)
+- [ ] **M8.3** — Protocol Abstraction & Parser Registry
+  - [ ] Define a common parser interface/adapter for message ingestion (keep minimal)
+  - [ ] Implement a parser registry
+  - [ ] Select parsers dynamically using explicit instrument configuration
+  - [ ] Keep the BC-5150 HL7 parser as the first concrete implementation
+  - [ ] Unregistered or unbound instruments fail loudly — no silent fallback
+  - [ ] Defer ASTM until field-verified evidence exists; no speculative protocol-family hierarchies or plugin discovery systems
+
+- [ ] **M8.4** — Patient Overview API
+  - [ ] Before implementation, define: row identity, latest-run definition, finality definition, delivery-status definition, abnormal-count definition
+  - [ ] Treat the overview as an order-oriented operational view that still displays patient identity (drill-down targets an order); do not promise patient-level identity resolution the current BC-5150 data cannot support
+  - [ ] Use a deterministic `latest run` definition with `run_sequence` as the primary ordering signal
+  - [ ] Derive finality and delivery status consistently from the final run at order scope; define the no-final-run case explicitly
+  - [ ] Compute abnormal count as `flag_abnormalitas IS NOT NULL`, matching the current parser semantics (`'N'` and empty values are normalized to `NULL`; abnormal flags such as `'H~N'` are normalized to `'H'`). Confirm with a one-time query that no unexpected legacy values exist before relying on this predicate.
+  - [ ] Implement `GET /api/instruments/{instrument_id}/patients` with instrument scope, a date bound for operational use, and deterministic server-side pagination (no keyset pagination unless necessary)
+  - [ ] Put derivation logic in a service layer, not the router
+  - [ ] Create the query-performance indexes this endpoint requires as part of M8.4 database work, based on verified schema; do not invent indexes for tables/columns whose state is not verified by repository evidence
+
+- [ ] **M8.5** — Enterprise Dashboard Integration
+  - [ ] Implement instrument sidebar navigation
+  - [ ] Display the paginated Patient Overview table
+  - [ ] Drill down from an overview row into the existing M7 clinical detail workflow
+  - [ ] Extract the M7 detail body from `App.tsx` into a reusable detail view accepting an initial patient identifier and order identifier
+  - [ ] Reuse existing M7 components; do not rewrite `ResultTable`, `ResultRow`, `ResultFlag`, `TestRunSelector`, `FinalRunWorkflow`, or `SimrsSyncWorkflow`
+  - [ ] Use view state for navigation; do not add React Router unless a later requirement proves URL routing is necessary
+  - [ ] Resolve whether the new sidebar replaces the existing `StickyStatusBar` to avoid duplicate instrument-navigation responsibilities
 
 ## Dependencies
 
 - **M3** — Single-instrument integration must work on new schema.
-- **M5** — Instrument status API must exist.
+- **M5** — API foundation must exist.
+- **M7** — Clinical dashboard components must exist for drill-down.
 
 ## Acceptance Criteria
 
-- 9 instruments can connect simultaneously.
-- Failure of one instrument does not affect others.
-- Both ASTM and HL7 protocols are supported.
-- Each instrument's connection state is reported to the dashboard.
+- Instrument connectivity is resolved from configuration; the Integration Service is not bound to BC-5150 specifics.
+- The Integration Service handles multiple instruments concurrently (one thread per instrument) with fault isolation and reconnect.
+- Raw messages are persisted on every path, including unexpected failure; ACK behavior does not depend on parser success.
+- The classification mechanism exists; unclassified messages are raw-persisted only and never create clinical Test Runs or Results.
+- The concrete BC-5150 classification rule (M8.2b) remains blocked until field evidence exists.
+- The specimen → visit/order identity rule is defined from verified instrument behavior before production multi-instrument ingestion.
+- Parser abstraction and registry select parsers from explicit configuration; unbound instruments fail loudly; ASTM deferred.
+- Patient Overview API is instrument-scoped, date-bound, and server-paginated, with derivation in a service layer and defined finality / delivery / abnormal-count semantics.
+- Dashboard provides instrument-based navigation and drills down into reused M7 clinical components without rewriting them.
 
 ---
-
 # M9 — QA & Hardening
 
 ## Objective
@@ -403,14 +458,15 @@ Add authentication, message deduplication, QC filtering, test coverage, and prod
   - [ ] Protect API endpoints by role
   - [ ] Protect Final Run and SIMRS sync actions
 
-- [ ] **M9.2** — Message deduplication
-  - [ ] Design dedup strategy (hash, sequence, or timestamp based)
-  - [ ] Prevent replayed messages from creating duplicate Test Runs
+- [ ] **M9.2** — Message Deduplication Refinement
+  - [ ] Per-instrument deduplication refinement (foundational exact-retransmission handling stays in M8.2)
+  - [ ] Retransmissions with changed timestamps
+  - [ ] Supplementary keys such as HL7 Control ID where justified
 
-- [ ] **M9.3** — QC / calibration filtering
-  - [ ] Define per-instrument QC identification rules
-  - [ ] Filter QC/calibration data from patient results
-  - [ ] Store QC messages for traceability
+- [ ] **M9.3** — QC / Calibration Filtering Refinement
+  - [ ] Expanded per-instrument QC / calibration rules from field-verified instrument-specific semantics
+  - [ ] Filter QC / calibration data from patient results
+  - [ ] Validate that the conservative fail-closed mechanism does not incorrectly quarantine genuine patient results
 
 - [ ] **M9.4** — Test suite
   - [ ] Backend unit tests (parser, services, business logic)
