@@ -2,6 +2,7 @@
 # Backend (Python/FastAPI)
 # ========================
 backend/.env
+backend/instruments.json
 backend/venv/
 backend/env/
 __pycache__/
