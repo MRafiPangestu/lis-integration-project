@@ -293,44 +293,44 @@ Build the React dashboard per the Design System specification, implementing all 
 
 ## Tasks
 
-- [ ] **M7.1** — Design System foundation
-  - [ ] Implement color tokens, typography, spacing per spec
-  - [ ] Configure Inter + Roboto Mono fonts
-  - [ ] Light mode theme (no dark mode for MVP)
+- [x] **M7.1** — Design System foundation
+  - [x] Implement color tokens, typography, spacing per spec
+  - [x] Configure Inter + Roboto Mono fonts
+  - [x] Light mode theme (no dark mode for MVP)
 
-- [ ] **M7.2** — Layout structure
-  - [ ] Header
-  - [ ] Instrument Connection Status Bar (sticky)
-  - [ ] Filter Bar
-  - [ ] Patient/Order Summary panel
-  - [ ] Test Run Selector
-  - [ ] Result Table
-  - [ ] Workflow action area
+- [x] **M7.2** — Layout structure
+  - [x] Header
+  - [x] Instrument Connection Status Bar (sticky)
+  - [x] Filter Bar
+  - [x] Patient/Order Summary panel
+  - [x] Test Run Selector
+  - [x] Result Table
+  - [x] Workflow action area
 
-- [ ] **M7.3** — Core components
-  - [ ] `InstrumentStatusBar` / `InstrumentStatusItem`
-  - [ ] `PatientSummary` / `OrderSummary`
-  - [ ] `TestRunSelector` / `TestRunTab`
-  - [ ] `ResultTable` / `ResultRow` / `ResultFlag`
-  - [ ] `FinalRunButton` + confirmation dialog
-  - [ ] `SimrsDeliveryStatus` / `SimrsSyncButton`
-  - [ ] `FilterBar` / `SearchInput`
-  - [ ] `LoadingState` / `EmptyState` / `ErrorState`
+- [x] **M7.3** — Core components
+  - [x] `InstrumentStatusBar` / `InstrumentStatusItem`
+  - [x] `PatientSummary` / `OrderSummary`
+  - [x] `TestRunSelector` / `TestRunTab`
+  - [x] `ResultTable` / `ResultRow` / `ResultFlag`
+  - [x] `FinalRunButton` + confirmation dialog
+  - [x] `SimrsDeliveryStatus` / `SimrsSyncButton`
+  - [x] `FilterBar` / `SearchInput`
+  - [x] `LoadingState` / `EmptyState` / `ErrorState`
 
-- [ ] **M7.4** — API integration
-  - [ ] API client layer (axios or fetch wrapper)
-  - [ ] React hooks for data fetching
-  - [ ] Auto-refresh / polling mechanism
+- [x] **M7.4** — API integration
+  - [x] API client layer (axios or fetch wrapper)
+  - [x] React hooks for data fetching
 
-- [ ] **M7.5** — Workflow interactions
-  - [ ] Set Final Run with confirmation dialog
-  - [ ] Sync to SIMRS with loading/success/failure feedback
-  - [ ] Retry delivery
-  - [ ] Toast/notification system
+- [x] **M7.5** — Workflow interactions
+  - [x] Set Final Run with confirmation dialog
+  - [x] Sync to SIMRS with loading/success/failure feedback
+  - [x] Retry delivery
+  - [x] Toast/notification system
 
-- [ ] **M7.6** — View-only enforcement
-  - [ ] Verify no `<input>`, `contenteditable`, or edit buttons for clinical data
-  - [ ] Accessibility: flags use icon + label + color (not color only)
+- [x] **M7.6** — View-only enforcement
+  - [x] Verify no `<input>`, `contenteditable`, or edit buttons for clinical data
+  - [x] Accessibility: flags use icon + label + color (not color only)
+
 
 ## Dependencies
 
@@ -344,7 +344,6 @@ Build the React dashboard per the Design System specification, implementing all 
 - Test Run selector allows switching between runs.
 - Final Run selection works with confirmation.
 - SIMRS sync works with status feedback.
-- Auto-refresh updates results without manual page reload.
 - Clinical data is strictly view-only.
 - Abnormal flags use icon + label + color.
 - Design System colors, fonts, and spacing are applied.
@@ -427,6 +426,10 @@ Add authentication, message deduplication, QC filtering, test coverage, and prod
   - [ ] Error handling standardization
   - [ ] Input validation
 
+- [ ] **M9.6** — UI Auto-Refresh
+  - [ ] Implement auto-refresh / polling mechanism for dashboard
+  - [ ] Ensure race condition safety during mutations
+
 ## Dependencies
 
 - **M1–M8** — All core features must be implemented.
@@ -465,7 +468,7 @@ M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6
 | M4 — Test Run Domain | ✅ Complete |
 | M5 — API | 🟢 Complete |
 | M6 — SIMRS | 🟢 Complete |
-| M7 — Frontend | Not Started |
+| M7 — Frontend | 🟢 Complete |
 | M8 — Multi-Instrument | Not Started |
 | M9 — QA & Hardening | Not Started |
 
