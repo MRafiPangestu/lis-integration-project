@@ -2,9 +2,9 @@
 
 Instrument connectivity is read from the per-instrument configuration contract
 (`backend/instruments.json`, see `instruments.example.json`). This entrypoint
-binds each enabled instrument to its parser and database identity and runs it on
-its own thread. The full multi-instrument supervisor (restart policy, health,
-lifecycle) is M8.1-B; the dynamic parser registry is M8.3.
+binds each enabled instrument to its parser and database identity and hands the
+worker set to the supervisor, which detects worker-thread death, restarts it,
+and runs a deterministic shutdown. The dynamic parser registry is M8.3.
 """
 import signal
 import sys
@@ -19,8 +19,9 @@ from app.integration.instruments import (
 )
 from app.integration.parsers.hl7 import parse_hl7_bc5150
 from app.integration.repository import process_message
+from app.integration.supervisor import Supervisor
 
-# Minimal parser binding for M8.1-A. Dynamic, config-driven parser selection is M8.3.
+# Minimal parser binding for M8.1. Dynamic, config-driven parser selection is M8.3.
 _PARSERS = {
     "bc5150_hl7": parse_hl7_bc5150,
 }
@@ -51,6 +52,34 @@ def make_handler(runtime: RuntimeInstrument, parser):
     return on_message
 
 
+def make_signal_handler(shutdown_event: threading.Event):
+    """SIGINT handler: set the shutdown flag and return. No I/O, no sys.exit —
+    the supervisor owns the shutdown sequence."""
+
+    def _handler(signum, frame):
+        shutdown_event.set()
+
+    return _handler
+
+
+def worker_factory(runtime: RuntimeInstrument):
+    """Build a fresh (client, unstarted thread) pair for one instrument.
+
+    Called at startup and again by the supervisor on every restart. It never
+    re-reads instruments.json — it works only from the given RuntimeInstrument.
+    """
+    parser = resolve_parser(runtime.config.parser_key)
+    client = InstrumentClient(
+        runtime.config.host, runtime.config.port, runtime.id_instrument
+    )
+    thread = threading.Thread(
+        target=client.recv_loop,
+        args=(make_handler(runtime, parser),),
+        name=f"instrument-{runtime.config.key}",
+    )
+    return client, thread
+
+
 def main() -> None:
     with SessionLocal() as session:
         runtimes = load_runtime_instruments(session)
@@ -61,38 +90,23 @@ def main() -> None:
               "and enable an instrument.")
         sys.exit(1)
 
-    clients: list[InstrumentClient] = []
-    threads: list[threading.Thread] = []
+    # Fail fast on an unknown parser_key, before any worker or status write.
     for runtime in runtimes:
-        cfg = runtime.config
-        parser = resolve_parser(cfg.parser_key)
-        client = InstrumentClient(cfg.host, cfg.port, runtime.id_instrument)
-        clients.append(client)
-        threads.append(
-            threading.Thread(
-                target=client.recv_loop,
-                args=(make_handler(runtime, parser),),
-                name=f"instrument-{cfg.key}",
-            )
-        )
+        resolve_parser(runtime.config.parser_key)
 
-    def signal_handler(sig, frame):
-        print("\n[*] Shutting down integration service...")
-        for client in clients:
-            client.stop()
-        sys.exit(0)
+    shutdown_event = threading.Event()
+    signal.signal(signal.SIGINT, make_signal_handler(shutdown_event))
 
-    signal.signal(signal.SIGINT, signal_handler)
+    print(f"[*] Starting Integration Service for {len(runtimes)} instrument(s): "
+          f"{', '.join(rt.config.key for rt in runtimes)}")
 
-    print(f"[*] Starting Integration Service for {len(threads)} instrument(s): "
-          f"{', '.join(t.name for t in threads)}")
-    for thread in threads:
-        thread.start()
-    try:
-        for thread in threads:
-            thread.join()
-    except KeyboardInterrupt:
-        signal_handler(None, None)
+    Supervisor(
+        runtimes,
+        worker_factory,
+        shutdown_event=shutdown_event,
+    ).run()
+
+    print("[*] Integration service stopped.")
 
 
 if __name__ == "__main__":

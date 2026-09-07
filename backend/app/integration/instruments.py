@@ -8,16 +8,37 @@ configuration.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.config import InstrumentConfig, settings
+from app.core.database import SessionLocal
 from app.models import Instrument
 
 
 class InstrumentConfigError(RuntimeError):
     """Raised when instrument configuration cannot be bound to the database."""
+
+
+def write_instrument_status(id_instrument: int, status: str) -> None:
+    """Persist one instrument's connection status in its own short-lived Session.
+
+    Shared by ``InstrumentClient`` and the supervisor so a status write never
+    piggybacks on a Session held elsewhere (startup, supervisor state).
+    """
+    try:
+        with SessionLocal() as session:
+            session.execute(
+                update(Instrument)
+                .where(Instrument.id_instrument == id_instrument)
+                .values(connection_status=status, last_status_at=datetime.utcnow())
+            )
+            session.commit()
+    except SQLAlchemyError as exc:
+        print(f"[!] Failed to update instrument {id_instrument} status to {status}: {exc}")
 
 
 @dataclass(frozen=True)
