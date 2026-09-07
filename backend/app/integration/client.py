@@ -8,7 +8,6 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.integration.protocols import InstrumentTransport
 from app.core.database import SessionLocal
-from app.core.config import settings
 from app.models.instrument import Instrument
 
 class InstrumentClient(InstrumentTransport):
@@ -21,10 +20,6 @@ class InstrumentClient(InstrumentTransport):
         self._stop_event = threading.Event()
 
     def _update_status(self, status: str) -> None:
-        if settings.DB_NAME != "lis_marina_permata_dev":
-            print(f"[!] Safety Abort: Cannot persist status. Active DB is {settings.DB_NAME}")
-            return
-
         try:
             with SessionLocal() as session:
                 # Use bulk update for transaction safety and efficiency

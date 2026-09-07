@@ -1,11 +1,19 @@
+from typing import Callable, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 from app.models import Patient, Visit, Order, TestRun, Result, InstrumentMessage
-from app.integration.parsers.hl7 import parse_hl7_bc5150
+from app.integration.parsers import ParsedHL7
 from app.integration.protocols import InstrumentTransport
 import traceback
 
-def process_message(raw_frame: bytes, transport: InstrumentTransport, instrument_id: int, session: Session):
+def process_message(
+    raw_frame: bytes,
+    transport: InstrumentTransport,
+    instrument_id: int,
+    session: Session,
+    parser: Callable[[str], Optional[ParsedHL7]],
+    identity_prefix: str,
+):
     raw_text = raw_frame.decode('utf-8', errors='replace')
     
     # Step 1: Save raw message
@@ -18,8 +26,8 @@ def process_message(raw_frame: bytes, transport: InstrumentTransport, instrument
     session.flush() # get id_message
     
     try:
-        # Step 2: Parse HL7
-        parsed = parse_hl7_bc5150(raw_text)
+        # Step 2: Parse using the instrument-bound parser
+        parsed = parser(raw_text)
         
         if not parsed:
             msg.parse_status = 'Failed'
@@ -43,7 +51,7 @@ def process_message(raw_frame: bytes, transport: InstrumentTransport, instrument
             transport.send_ack(control_id, success=False, error="Missing OBR.3 or OBR.7")
             return
             
-        no_registrasi = f"BC5150-{parsed.order.specimen_no}"
+        no_registrasi = f"{identity_prefix}{parsed.order.specimen_no}"
         
         # Check idempotency: does this source measurement exist?
         existing_run = session.scalar(
