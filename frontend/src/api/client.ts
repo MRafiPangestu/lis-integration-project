@@ -18,16 +18,17 @@ export class ApiError extends Error {
 
 const API_BASE_URL = "http://localhost:8000"
 
-async function get<T>(path: string): Promise<T> {
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const url = new URL(path, `${API_BASE_URL}/`)
+  const method = init?.method ?? "GET"
 
   let response: Response
   try {
-    response = await fetch(url)
+    response = await fetch(url, init)
   } catch (error) {
     const detail = error instanceof Error ? `: ${error.message}` : ""
     throw new ApiError(
-      `Network request failed for GET ${url.pathname}${detail}`,
+      `Network request failed for ${method} ${url.pathname}${detail}`,
       "network",
     )
   }
@@ -41,8 +42,9 @@ async function get<T>(path: string): Promise<T> {
     }
 
     const suffix = detail.length > 0 ? `: ${detail}` : ""
+    const requestContext = method === "GET" ? "" : ` for ${method} ${url.pathname}`
     throw new ApiError(
-      `API request failed with ${response.status} ${response.statusText}${suffix}`,
+      `API request failed with ${response.status} ${response.statusText}${requestContext}${suffix}`,
       "http",
       response.status,
     )
@@ -53,7 +55,7 @@ async function get<T>(path: string): Promise<T> {
     payload = JSON.parse(await response.text())
   } catch {
     throw new ApiError(
-      `API response was not valid JSON for GET ${url.pathname}`,
+      `API response was not valid JSON for ${method} ${url.pathname}`,
       "parse",
       response.status,
     )
@@ -62,6 +64,15 @@ async function get<T>(path: string): Promise<T> {
   return payload as T
 }
 
+async function get<T>(path: string): Promise<T> {
+  return request<T>(path)
+}
+
+async function post<T>(path: string): Promise<T> {
+  return request<T>(path, { method: "POST" })
+}
+
 export const apiClient = {
   get,
+  post,
 }

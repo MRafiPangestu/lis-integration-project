@@ -21,6 +21,15 @@ export interface TestRunResponse {
   results: ResultResponse[]
 }
 
+export interface SyncSimrsResponse {
+  run_id: number
+  delivery_status: string
+  delivered_at: string | null
+  simrs_success: boolean
+  simrs_status_code: number | null
+  simrs_error: string | null
+}
+
 export interface PatientResponse {
   id_pasien: number
   nomor_rm: string

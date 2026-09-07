@@ -50,7 +50,9 @@ export function useOrderTestRuns(
     } catch (requestError) {
       if (generation !== requestGeneration.current) return
 
-      setError(toError(requestError))
+      const nextError = toError(requestError)
+      setError(nextError)
+      throw nextError
     } finally {
       if (generation === requestGeneration.current) {
         setLoading(false)
@@ -64,10 +66,10 @@ export function useOrderTestRuns(
       if (!active) return
 
       if (validOrderId === null) {
-        void refetch()
+        void refetch().catch(() => undefined)
       } else {
         setData(null)
-        void refetch()
+        void refetch().catch(() => undefined)
       }
     })
 

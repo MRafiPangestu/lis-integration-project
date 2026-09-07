@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "./api/client";
 import { PatientSummary } from "./components/display/PatientSummary";
 import { ResultTable } from "./components/display/ResultTable";
@@ -8,6 +8,8 @@ import { EmptyState } from "./components/status/EmptyState";
 import { ErrorState } from "./components/status/ErrorState";
 import { LoadingState } from "./components/status/LoadingState";
 import { MainLayout } from "./components/layout/MainLayout";
+import { FinalRunWorkflow } from "./components/workflow/FinalRunWorkflow";
+import { SimrsSyncWorkflow } from "./components/workflow/SimrsSyncWorkflow";
 import { useInstruments } from "./hooks/useInstruments";
 import { useOrderTestRuns } from "./hooks/useOrderTestRuns";
 import { usePatientHistory } from "./hooks/usePatientHistory";
@@ -95,6 +97,17 @@ function App() {
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [patientRequestStarted, setPatientRequestStarted] = useState(false);
   const [testRunRequestStarted, setTestRunRequestStarted] = useState(false);
+
+  const activeOrderIdRef = useRef<number | null>(selectedOrderId);
+  const activeRunIdRef = useRef<number | null>(selectedRunId);
+  activeOrderIdRef.current = selectedOrderId;
+  activeRunIdRef.current = selectedRunId;
+
+  const isActiveWorkflow = useCallback(
+    (runId: number, orderId: number) =>
+      activeOrderIdRef.current === orderId && activeRunIdRef.current === runId,
+    [],
+  );
 
   const patientHistory = usePatientHistory(activeNomorRm);
   const orderTestRuns = useOrderTestRuns(selectedOrderId);
@@ -287,11 +300,11 @@ function App() {
             title="No order selected"
             message="Select an order to view test runs."
           />
-        ) : orderTestRuns.error && !testRunRequestStarted ? (
+        ) : activeTestRuns === null && !testRunRequestStarted ? (
           <LoadingState message="Loading test runs..." />
-        ) : orderTestRuns.loading || !testRunRequestStarted ? (
+        ) : activeTestRuns === null && orderTestRuns.loading ? (
           <LoadingState message="Loading test runs..." />
-        ) : orderTestRuns.error ? (
+        ) : activeTestRuns === null && orderTestRuns.error ? (
           <ErrorState
             error={orderTestRuns.error}
             message="Unable to load test runs. Please try again."
@@ -305,6 +318,11 @@ function App() {
           />
         ) : activeTestRuns ? (
           <>
+            {orderTestRuns.loading ? (
+              <p role="status" style={{ color: "var(--color-text-secondary)" }}>
+                Refreshing test runs...
+              </p>
+            ) : null}
             <TestRunSelector
               disabled={orderTestRuns.loading}
               onSelect={handleRunSelect}
@@ -316,13 +334,31 @@ function App() {
                 title="No test run selected"
                 message="Select a test run to view results."
               />
-            ) : selectedTestRun.results.length === 0 ? (
-              <EmptyState
-                title="No results found"
-                message="No results were found for this test run."
-              />
             ) : (
-              <ResultTable results={selectedTestRun.results} />
+              <>
+                <FinalRunWorkflow
+                  key={`${selectedOrderId}:${selectedTestRun.id_run}`}
+                  disabled={orderTestRuns.loading}
+                  isActive={isActiveWorkflow}
+                  onRefetch={orderTestRuns.refetch}
+                  selectedRun={selectedTestRun}
+                />
+                <SimrsSyncWorkflow
+                  key={`${selectedOrderId}:${selectedTestRun.id_run}`}
+                  disabled={orderTestRuns.loading}
+                  isActive={isActiveWorkflow}
+                  onRefetch={orderTestRuns.refetch}
+                  selectedRun={selectedTestRun}
+                />
+                {selectedTestRun.results.length === 0 ? (
+                  <EmptyState
+                    title="No results found"
+                    message="No results were found for this test run."
+                  />
+                ) : (
+                  <ResultTable results={selectedTestRun.results} />
+                )}
+              </>
             )}
           </>
         ) : null
