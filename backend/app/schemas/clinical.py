@@ -36,6 +36,11 @@ class InstrumentResponse(BaseModel):
     tipe_koneksi: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
+class InstrumentStatusResponse(InstrumentResponse):
+    connection_status: str
+    last_status_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
 class FlatResultResponse(ResultResponse):
     test_run: TestRunResponse
     instrument: Optional[InstrumentResponse] = None
