@@ -22,6 +22,10 @@ class InstrumentMessage(Base):
         String(50), nullable=False, server_default="Success"
     )
     error_detail: Mapped[Optional[str]] = mapped_column(Text)
+    # M8.2 classification axis (separate from parse_status). NULL means the row
+    # was ingested before M8.2 existed; every terminal path populates it now.
+    message_class: Mapped[Optional[str]] = mapped_column(String(32))
+    classification_rule: Mapped[Optional[str]] = mapped_column(String(100))
     received_at: Mapped[datetime.datetime] = mapped_column(
         TIMESTAMP, nullable=False, server_default=func.current_timestamp()
     )

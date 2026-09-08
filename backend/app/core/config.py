@@ -30,6 +30,10 @@ class InstrumentConfig(BaseModel):
     parser_key: str
     identity_prefix: str
     enabled: bool = False
+    # M8.2: name of the message-classification policy for this instrument.
+    # Omitted -> the strict default (UNCLASSIFIED). Resolved in
+    # app.integration.classification; unknown names fall back to strict.
+    classification_policy: Optional[str] = None
 
     @field_validator("mode")
     @classmethod

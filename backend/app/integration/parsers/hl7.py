@@ -1,20 +1,27 @@
 import datetime
 from typing import Optional
-from app.integration.parsers import ParsedHL7, ParsedPatient, ParsedOrder, ParsedResult
+from app.integration.parsers import (
+    ParsedHL7,
+    ParsedObxMetadata,
+    ParsedOrder,
+    ParsedPatient,
+    ParsedResult,
+)
 
 def parse_hl7_bc5150(raw_text: str) -> Optional[ParsedHL7]:
     segments = raw_text.split('\r')
-    
+
     control_id = ""
     patient_id = ""
     patient_name = ""
     gender = None
-    
+
     specimen_no = ""
     waktu_run = None
-    
+
     results = []
-    
+    is_metadata = []
+
     for segment in segments:
         segment = segment.strip()
         if not segment:
@@ -61,15 +68,32 @@ def parse_hl7_bc5150(raw_text: str) -> Optional[ParsedHL7]:
         elif seg_type == 'OBX':
             if len(fields) > 5:
                 data_type = fields[2].strip()
-                if data_type not in ('NM', 'ST'):
-                    continue
-                
-                # Check keywords as backup
+
+                # Graphic/binary payload protection (applies to every OBX type)
                 param_raw = fields[3]
                 param_upper = param_raw.upper()
-                if 'HISTOGRAM' in param_upper or 'SCATTERGRAM' in param_upper or 'BASE64' in param_upper:
+                is_graphic = (
+                    'HISTOGRAM' in param_upper
+                    or 'SCATTERGRAM' in param_upper
+                    or 'BASE64' in param_upper
+                )
+
+                if data_type == 'IS':
+                    # Inert metadata for future evidence-based classification.
+                    if not is_graphic:
+                        is_metadata.append(ParsedObxMetadata(
+                            obx_type='IS',
+                            identifier=param_raw.strip(),
+                            value=fields[5].strip(),
+                        ))
                     continue
-                    
+
+                if data_type not in ('NM', 'ST'):
+                    continue
+
+                if is_graphic:
+                    continue
+
                 param_parts = param_raw.split('^')
                 param_name = param_parts[1] if len(param_parts) > 1 else param_raw
                 
@@ -111,6 +135,7 @@ def parse_hl7_bc5150(raw_text: str) -> Optional[ParsedHL7]:
             specimen_no=specimen_no,
             waktu_run=waktu_run
         ),
-        results=results
+        results=results,
+        is_metadata=is_metadata,
     )
 

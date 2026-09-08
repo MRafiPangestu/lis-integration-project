@@ -6,11 +6,13 @@ binds each enabled instrument to its parser and database identity and hands the
 worker set to the supervisor, which detects worker-thread death, restarts it,
 and runs a deterministic shutdown. The dynamic parser registry is M8.3.
 """
+import functools
 import signal
 import sys
 import threading
 
 from app.core.database import SessionLocal
+from app.integration import classification
 from app.integration.client import InstrumentClient
 from app.integration.instruments import (
     InstrumentConfigError,
@@ -37,7 +39,7 @@ def resolve_parser(parser_key: str):
         )
 
 
-def make_handler(runtime: RuntimeInstrument, parser):
+def make_handler(runtime: RuntimeInstrument, parser, classify_fn):
     def on_message(raw_frame: bytes, transport):
         with SessionLocal() as session:
             process_message(
@@ -47,6 +49,7 @@ def make_handler(runtime: RuntimeInstrument, parser):
                 session,
                 parser=parser,
                 identity_prefix=runtime.config.identity_prefix,
+                classify_fn=classify_fn,
             )
 
     return on_message
@@ -69,12 +72,14 @@ def worker_factory(runtime: RuntimeInstrument):
     re-reads instruments.json — it works only from the given RuntimeInstrument.
     """
     parser = resolve_parser(runtime.config.parser_key)
+    policy = classification.resolve_policy(runtime.config.classification_policy)
+    classify_fn = functools.partial(classification.classify, policy=policy)
     client = InstrumentClient(
         runtime.config.host, runtime.config.port, runtime.id_instrument
     )
     thread = threading.Thread(
         target=client.recv_loop,
-        args=(make_handler(runtime, parser),),
+        args=(make_handler(runtime, parser, classify_fn),),
         name=f"instrument-{runtime.config.key}",
     )
     return client, thread
