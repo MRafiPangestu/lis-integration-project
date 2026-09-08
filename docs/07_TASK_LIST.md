@@ -386,27 +386,48 @@ Extend the Integration Service to handle concurrent connections from all 9 instr
 - **M8.1-A** (fc78533): Instrument Configuration Contract & Inventory — InstrumentConfig, runtime identity resolution, parser binding, legacy code quarantine. 34 tests pass.
 - **M8.1-B** (e3a2495): Multi-Instrument Supervisor & Runtime Lifecycle — Worker lifecycle management, dead-worker detection/restart, deterministic shutdown. 47 tests pass.
 
-- [ ] **M8.2** — Ingestion Hardening & Classification Mechanism
-  - [ ] Verify the existing Order → Test Run → Result hierarchy and `run_sequence` behavior (always insert new runs, never overwrite); preserve current semantics
-  - [ ] Verify the existing exact-retransmission idempotency check and retain it as foundational protection
-  - [ ] Guarantee raw-message persistence on every processing path, including unexpected exceptions (a rollback can currently lose the raw message)
-  - [ ] Make failure ACK behavior independent of parser success, so malformed or unexpected input still produces an appropriate instrument response
-  - [ ] Ensure unexpected `run_sequence` uniqueness errors do not silently discard the clinical message
-  - [ ] Do not redesign concurrency or add locking unless strictly necessary
+- [x] **M8.2** — Ingestion Hardening & Classification Mechanism
+  - [x] Verify the existing Order → Test Run → Result hierarchy and `run_sequence` behavior (always insert new runs, never overwrite); preserve current semantics
+    - Verified in 486880c: semantics unchanged; new runs always created; never overwritten
+  - [x] Verify the existing exact-retransmission idempotency check and retain it as foundational protection
+    - Verified in 486880c: exact-retransmission behavior preserved unchanged
+  - [x] Guarantee raw-message persistence on every processing path, including unexpected exceptions (a rollback can currently lose the raw message)
+    - Implemented in 486880c: T1/T2/T3 transaction model ensures raw persistence on all paths
+  - [x] Make failure ACK behavior independent of parser success, so malformed or unexpected input still produces an appropriate instrument response
+    - Implemented in 486880c: failure ACK generated from raw MSH-10 when parser=None or parser raises
+  - [x] Ensure unexpected `run_sequence` uniqueness errors do not silently discard the clinical message
+    - Implemented in 486880c: IntegrityError on run_sequence is persisted as raw message; no silent loss
+  - [x] Do not redesign concurrency or add locking unless strictly necessary
+    - Verified in 486880c: existing SQLAlchemy concurrency semantics preserved; no new locking added
   - Classification mechanism:
-    - [ ] Implement a classification mechanism (not a vendor-specific rule) supporting patient-result, non-patient/background, unclassified, and unparseable states where appropriate
-    - [ ] Record a traceable classification reason/rule for each message
-    - [ ] Fail closed: when classification is uncertain, do not treat the message as a patient result
-    - [ ] Unclassified messages remain raw-persisted but must not create clinical Test Runs or Results
-    - [ ] Capture and preserve `IS`-typed OBX metadata currently discarded by the parser, for future evidence-based classification
+    - [x] Implement a classification mechanism (not a vendor-specific rule) supporting patient-result, non-patient/background, unclassified, and unparseable states where appropriate
+      - Implemented in 486880c: generic classification mechanism with PATIENT_RESULT, NON_PATIENT, UNCLASSIFIED, UNPARSEABLE states
+    - [x] Record a traceable classification reason/rule for each message
+      - Implemented in 486880c: classification_rule field added to InstrumentMessage; populated by classify() function
+    - [x] Fail closed: when classification is uncertain, do not treat the message as a patient result
+      - Implemented in 486880c: strict defaults; only PATIENT_RESULT reaches clinical persistence
+    - [x] Unclassified messages remain raw-persisted but must not create clinical Test Runs or Results
+      - Implemented in 486880c: UNCLASSIFIED messages create no TestRun/Result; only raw message persisted
+    - [x] Capture and preserve `IS`-typed OBX metadata currently discarded by the parser, for future evidence-based classification
+      - Implemented in 486880c: IS-type segments preserved in classification metadata; not discarded
   - Specimen / visit identity:
     - [ ] Investigate and define the specimen → visit/order identity rule for messages without a patient identifier; preserve legitimate repeat-run semantics; resolve the collision risk before production multi-instrument ingestion; base the rule on verified instrument behavior and clinical requirements (no date-scoped or arbitrary replacement key)
+      - **Not changed in M8.2** — remains blocked pending field evidence and clinical requirements investigation
   - Ingestion-critical tests:
-    - [ ] Parser behavior
-    - [ ] Classification mechanism and fail-closed handling
-    - [ ] Exact-retransmission behavior
-    - [ ] `run_sequence` behavior
-    - [ ] Error / rollback path for raw-message persistence
+    - [x] Parser behavior
+      - Implemented in 486880c: 28 new ingestion tests covering parser paths and exceptions
+    - [x] Classification mechanism and fail-closed handling
+      - Implemented in 486880c: comprehensive classification tests with fail-closed verification
+    - [x] Exact-retransmission behavior
+      - Implemented in 486880c: exact-retransmission idempotency tests
+    - [x] `run_sequence` behavior
+      - Implemented in 486880c: run_sequence increment and conflict tests
+    - [x] Error / rollback path for raw-message persistence
+      - Implemented in 486880c: T1/T2/T3 transaction rollback path tests
+
+**Completion Notes:**
+- **M8.2** (486880c): Ingestion Hardening & Generic Classification — Raw-message persistence on all transaction paths (T1 parser=None, T2 parser exception, T3 post-parse IntegrityError). Parser-independent failure ACK from MSH-10. Generic fail-closed classification mechanism with PATIENT_RESULT / NON_PATIENT / UNCLASSIFIED / UNPARSEABLE states. IS-type OBX metadata preserved. Exact-retransmission and run_sequence semantics preserved. 28 new ingestion tests. 75 total backend tests passing.
+- **M8.2b** (Concrete BC-5150 Classification Rule) — **REMAINS BLOCKED** pending field evidence of BC-5150 background / QC / calibration samples. No vendor-specific rule implemented.
 
 - [ ] **M8.2b** — Field-Verified BC-5150 Classification Rule
   - [ ] **BLOCKED** — pending field evidence or recovered PoC evidence of a BC-5150 background / QC / calibration sample (none is currently committed to the repository)
@@ -541,6 +562,8 @@ M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6
 | M6 — SIMRS | 🟢 Complete |
 | M7 — Frontend | 🟢 Complete |
 | M8.1 — Instrument Config & Supervisor | ✅ Complete |
-| M8.2–M8.5 — Ingestion Hardening & Dashboard | In Progress |
+| M8.2 — Ingestion Hardening & Classification | ✅ Complete |
+| M8.2b — BC-5150 Classification Rule | 🔒 Blocked (pending field evidence) |
+| M8.3–M8.5 — Parser Registry & Dashboard | Not Started |
 | M9 — QA & Hardening | Not Started |
 
