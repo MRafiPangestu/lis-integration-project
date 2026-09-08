@@ -2,6 +2,7 @@ import { apiClient } from "./client"
 import type {
   HistoryPatientResponse,
   InstrumentStatusResponse,
+  PaginatedOrderOverviewResponse,
   PaginatedResultResponse,
   TestRunResponse,
 } from "../types/api"
@@ -64,4 +65,27 @@ export function getPatientHistory(nomorRm: string): Promise<HistoryPatientRespon
 
 export function getInstrumentStatuses(): Promise<InstrumentStatusResponse[]> {
   return apiClient.get<InstrumentStatusResponse[]>("/api/instruments/status")
+}
+
+export interface InstrumentOrdersQueryParams {
+  date_from: string
+  date_to: string
+  page: number
+  page_size: number
+}
+
+export function getInstrumentOrders(
+  instrumentId: number,
+  params: InstrumentOrdersQueryParams,
+): Promise<PaginatedOrderOverviewResponse> {
+  const searchParams = new URLSearchParams()
+  // Both bounds are server-local naive timestamps: send the datetime-local
+  // string verbatim (no toISOString, no Z, no offset).
+  searchParams.set("date_from", params.date_from)
+  searchParams.set("date_to", params.date_to)
+  searchParams.set("page", String(params.page))
+  searchParams.set("page_size", String(params.page_size))
+
+  const path = `/api/instruments/${encodeURIComponent(String(instrumentId))}/orders?${searchParams.toString()}`
+  return apiClient.get<PaginatedOrderOverviewResponse>(path)
 }

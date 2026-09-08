@@ -101,3 +101,28 @@ export interface PaginatedResultResponse {
   page_size: number
   total: number
 }
+
+// M8.4 instrument-scoped order overview — mirrors app/schemas/overview.py exactly.
+export interface OrderOverviewRow {
+  id_order: number
+  waktu_order: string
+  status_order: string
+  nomor_rm: string
+  nama_lengkap: string
+  no_registrasi: string
+  id_visit: number
+  effective_run_id: number | null
+  effective_run_sequence: number | null
+  effective_run_waktu_run: string | null
+  is_final: boolean
+  delivery_status: string | null
+  delivered_at: string | null
+  abnormal_count: number
+}
+
+export interface PaginatedOrderOverviewResponse {
+  items: OrderOverviewRow[]
+  page: number
+  page_size: number
+  total: number
+}

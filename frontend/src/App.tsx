@@ -1,387 +1,135 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiError } from "./api/client";
-import { PatientSummary } from "./components/display/PatientSummary";
-import { ResultTable } from "./components/display/ResultTable";
-import { TestRunSelector } from "./components/display/TestRunSelector";
-import { VisitOrderSelector } from "./components/display/VisitOrderSelector";
+import { useState } from "react";
+import { AppShell } from "./components/layout/AppShell";
+import { Sidebar } from "./components/layout/Sidebar";
+import { OrderDetailView } from "./components/detail/OrderDetailView";
+import { OrderOverviewView } from "./components/overview/OrderOverviewView";
+import type { OverviewDetailTarget } from "./components/overview/OrderOverviewView";
+import { todayRange } from "./components/overview/dateRange";
 import { EmptyState } from "./components/status/EmptyState";
 import { ErrorState } from "./components/status/ErrorState";
 import { LoadingState } from "./components/status/LoadingState";
-import { MainLayout } from "./components/layout/MainLayout";
-import { FinalRunWorkflow } from "./components/workflow/FinalRunWorkflow";
-import { SimrsSyncWorkflow } from "./components/workflow/SimrsSyncWorkflow";
 import { useInstruments } from "./hooks/useInstruments";
-import { useOrderTestRuns } from "./hooks/useOrderTestRuns";
-import { usePatientHistory } from "./hooks/usePatientHistory";
-import type {
-  HistoryOrderResponse,
-  HistoryPatientResponse,
-  HistoryVisitResponse,
-  TestRunResponse,
-} from "./types/api";
-
-function timestamp(value: string | null | undefined): number | null {
-  if (!value) return null;
-
-  const parsed = Date.parse(value);
-  return Number.isNaN(parsed) ? null : parsed;
-}
-
-function compareNewest(
-  firstTime: string | null | undefined,
-  firstId: number,
-  secondTime: string | null | undefined,
-  secondId: number,
-): number {
-  const firstTimestamp = timestamp(firstTime);
-  const secondTimestamp = timestamp(secondTime);
-
-  if (firstTimestamp !== null || secondTimestamp !== null) {
-    if (firstTimestamp === null) return 1;
-    if (secondTimestamp === null) return -1;
-    if (firstTimestamp !== secondTimestamp) {
-      return secondTimestamp - firstTimestamp;
-    }
-  }
-
-  return secondId - firstId;
-}
-
-function sortVisits(visits: HistoryVisitResponse[]): HistoryVisitResponse[] {
-  return [...visits].sort((first, second) =>
-    compareNewest(
-      first.waktu_kunjungan,
-      first.id_visit,
-      second.waktu_kunjungan,
-      second.id_visit,
-    ),
-  );
-}
-
-function sortOrders(orders: HistoryOrderResponse[]): HistoryOrderResponse[] {
-  return [...orders].sort((first, second) =>
-    compareNewest(first.waktu_order, first.id_order, second.waktu_order, second.id_order),
-  );
-}
-
-function sortTestRuns(testRuns: TestRunResponse[]): TestRunResponse[] {
-  return [...testRuns].sort((first, second) => {
-    if (first.is_final !== second.is_final) {
-      return first.is_final ? -1 : 1;
-    }
-
-    if (first.run_sequence !== second.run_sequence) {
-      return second.run_sequence - first.run_sequence;
-    }
-
-    return compareNewest(first.waktu_run, first.id_run, second.waktu_run, second.id_run);
-  });
-}
-
-function defaultTestRunId(testRuns: TestRunResponse[]): number | null {
-  return sortTestRuns(testRuns)[0]?.id_run ?? null;
-}
-
-function activeHistoryFor(
-  data: HistoryPatientResponse | null,
-  activeNomorRm: string | null,
-): HistoryPatientResponse | null {
-  return data && activeNomorRm && data.nomor_rm === activeNomorRm ? data : null;
-}
 
 function App() {
-  const [searchInput, setSearchInput] = useState("");
-  const [activeNomorRm, setActiveNomorRm] = useState<string | null>(null);
-  const [selectedVisitId, setSelectedVisitId] = useState<number | null>(null);
-  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
-  const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
-  const [patientRequestStarted, setPatientRequestStarted] = useState(false);
-  const [testRunRequestStarted, setTestRunRequestStarted] = useState(false);
-
-  const activeOrderIdRef = useRef<number | null>(selectedOrderId);
-  const activeRunIdRef = useRef<number | null>(selectedRunId);
-  activeOrderIdRef.current = selectedOrderId;
-  activeRunIdRef.current = selectedRunId;
-
-  const isActiveWorkflow = useCallback(
-    (runId: number, orderId: number) =>
-      activeOrderIdRef.current === orderId && activeRunIdRef.current === runId,
-    [],
-  );
-
-  const patientHistory = usePatientHistory(activeNomorRm);
-  const orderTestRuns = useOrderTestRuns(selectedOrderId);
   const instruments = useInstruments();
 
-  const activeHistory = activeHistoryFor(patientHistory.data, activeNomorRm);
-  const sortedVisits = useMemo(
-    () => (activeHistory ? sortVisits(activeHistory.visits) : []),
-    [activeHistory],
-  );
-  const selectedVisit = useMemo(
-    () => sortedVisits.find((visit) => visit.id_visit === selectedVisitId) ?? null,
-    [selectedVisitId, sortedVisits],
-  );
-  const sortedOrders = useMemo(
-    () => (selectedVisit ? sortOrders(selectedVisit.orders) : []),
-    [selectedVisit],
-  );
-  const selectedOrder = useMemo(
-    () => sortedOrders.find((order) => order.id_order === selectedOrderId) ?? null,
-    [selectedOrderId, sortedOrders],
-  );
-  const activeTestRuns = useMemo(
-    () => {
-      if (selectedOrderId === null || orderTestRuns.data === null) return null;
-      return orderTestRuns.data.filter((testRun) => testRun.id_order === selectedOrderId);
-    },
-    [orderTestRuns.data, selectedOrderId],
-  );
-  const selectedTestRun = useMemo(
-    () => activeTestRuns?.find((testRun) => testRun.id_run === selectedRunId) ?? null,
-    [activeTestRuns, selectedRunId],
-  );
+  const [activeInstrumentId, setActiveInstrumentId] = useState<number | null>(null);
+  const [detailTarget, setDetailTarget] = useState<OverviewDetailTarget | null>(null);
+  const [initialRange] = useState(todayRange);
+  const [dateFrom, setDateFrom] = useState(initialRange[0]);
+  const [dateTo, setDateTo] = useState(initialRange[1]);
+  const [page, setPage] = useState(1);
 
-  useEffect(() => {
-    if (activeNomorRm === null) {
-      setPatientRequestStarted(false);
-    } else if (patientHistory.loading) {
-      setPatientRequestStarted(true);
-    }
-  }, [activeNomorRm, patientHistory.loading]);
+  // Legacy MRN-search path (kept for backwards-compatible detail behaviour).
+  const [searchInput, setSearchInput] = useState("");
+  const [searchNomorRm, setSearchNomorRm] = useState<string | null>(null);
+  const [searchGeneration, setSearchGeneration] = useState(0);
 
-  useEffect(() => {
-    if (activeHistory === null) return;
+  // Default selection: the user's explicit choice, otherwise the first
+  // instrument the API returns (lowest id_instrument). Derived, never a
+  // hardcoded id and never stored via an effect.
+  const selectedInstrumentId =
+    activeInstrumentId ?? instruments.data?.[0]?.id_instrument ?? null;
 
-    setSelectedVisitId((currentVisitId) => {
-      if (sortedVisits.some((visit) => visit.id_visit === currentVisitId)) {
-        return currentVisitId;
-      }
+  const handleSelectInstrument = (instrumentId: number) => {
+    setActiveInstrumentId(instrumentId);
+    setDetailTarget(null);
+    setSearchNomorRm(null);
+    setPage(1);
+  };
 
-      return sortedVisits[0]?.id_visit ?? null;
-    });
-  }, [activeHistory, sortedVisits]);
+  const handleDateChange = (nextFrom: string, nextTo: string) => {
+    setDateFrom(nextFrom);
+    setDateTo(nextTo);
+    setPage(1);
+  };
 
-  useEffect(() => {
-    setSelectedOrderId((currentOrderId) => {
-      if (sortedOrders.some((order) => order.id_order === currentOrderId)) {
-        return currentOrderId;
-      }
-
-      return sortedOrders[0]?.id_order ?? null;
-    });
-  }, [sortedOrders]);
-
-  useEffect(() => {
-    setSelectedRunId(null);
-    setTestRunRequestStarted(false);
-  }, [selectedOrderId]);
-
-  useEffect(() => {
-    if (orderTestRuns.loading) {
-      setTestRunRequestStarted(true);
-    }
-  }, [orderTestRuns.loading]);
-
-  useEffect(() => {
-    if (selectedOrderId === null || activeTestRuns === null || orderTestRuns.loading) {
-      if (selectedOrderId === null || activeTestRuns === null) {
-        setSelectedRunId(null);
-      }
-      return;
-    }
-
-    setSelectedRunId((currentRunId) => {
-      if (activeTestRuns.some((testRun) => testRun.id_run === currentRunId)) {
-        return currentRunId;
-      }
-
-      return defaultTestRunId(activeTestRuns);
-    });
-  }, [activeTestRuns, orderTestRuns.loading, selectedOrderId]);
+  const handleOpenOrder = (target: OverviewDetailTarget) => {
+    setSearchNomorRm(null);
+    setDetailTarget(target);
+  };
 
   const handleSearchSubmit = () => {
-    const nextNomorRm = searchInput.trim() || null;
-
-    setSelectedVisitId(null);
-    setSelectedOrderId(null);
-    setSelectedRunId(null);
-    setPatientRequestStarted(false);
-    setTestRunRequestStarted(false);
-    setActiveNomorRm(nextNomorRm);
-
-    if (nextNomorRm !== null && nextNomorRm === activeNomorRm) {
-      void patientHistory.refetch();
-    }
+    setDetailTarget(null);
+    setSearchNomorRm(searchInput.trim() || null);
+    setSearchGeneration((generation) => generation + 1);
   };
 
-  const handleVisitSelect = (visitId: number) => {
-    if (!sortedVisits.some((visit) => visit.id_visit === visitId)) return;
+  const activeInstrument =
+    instruments.data?.find((item) => item.id_instrument === selectedInstrumentId) ?? null;
 
-    setSelectedVisitId(visitId);
-    setSelectedOrderId(null);
-    setSelectedRunId(null);
-    setTestRunRequestStarted(false);
-  };
-
-  const handleOrderSelect = (orderId: number) => {
-    if (!sortedOrders.some((order) => order.id_order === orderId)) return;
-
-    setSelectedOrderId(orderId);
-    setSelectedRunId(null);
-    setTestRunRequestStarted(false);
-  };
-
-  const handleRunSelect = (runId: number) => {
-    if (!activeTestRuns?.some((testRun) => testRun.id_run === runId)) return;
-    setSelectedRunId(runId);
-  };
-
-  const patientNotFound =
-    patientHistory.error instanceof ApiError && patientHistory.error.status === 404;
-
-  const patientContent = activeNomorRm === null ? (
-    <EmptyState
-      title="No patient selected"
-      message="Search for a patient to view laboratory history."
-    />
-  ) : !activeHistory && !patientRequestStarted ? (
-    <LoadingState message="Loading patient history..." />
-  ) : patientHistory.loading && !activeHistory ? (
-    <LoadingState message="Loading patient history..." />
-  ) : patientHistory.error && !activeHistory ? (
-    <ErrorState
-      error={patientHistory.error}
-      message={
-        patientNotFound
-          ? "No patient was found for this medical record number."
-          : "Unable to load patient history. Please try again."
-      }
-      onRetry={patientHistory.refetch}
-      title={patientNotFound ? "Patient not found" : "Patient history unavailable"}
-    />
-  ) : activeHistory ? (
-    <>
-      <PatientSummary patient={activeHistory} visit={selectedVisit} order={selectedOrder} />
-
-      {sortedVisits.length === 0 ? (
-        <EmptyState
-          title="No visits found"
-          message="No visits were found for this patient."
-        />
-      ) : (
-        <VisitOrderSelector
-          disabled={patientHistory.loading}
-          onOrderSelect={handleOrderSelect}
-          onVisitSelect={handleVisitSelect}
-          selectedOrderId={selectedOrderId}
-          selectedVisitId={selectedVisitId}
-          visits={sortedVisits}
-        />
-      )}
-
-      {selectedVisit && sortedOrders.length === 0 ? (
-        <EmptyState
-          title="No orders found"
-          message="No orders were found for this visit."
-        />
-      ) : null}
-
-      {sortedVisits.length > 0 && selectedVisit === null ? (
-        <EmptyState
-          title="No visit selected"
-          message="Select a visit to view its orders."
-        />
-      ) : null}
-
-      {selectedVisit ? (
-        selectedOrderId === null ? (
-          <EmptyState
-            title="No order selected"
-            message="Select an order to view test runs."
-          />
-        ) : activeTestRuns === null && !testRunRequestStarted ? (
-          <LoadingState message="Loading test runs..." />
-        ) : activeTestRuns === null && orderTestRuns.loading ? (
-          <LoadingState message="Loading test runs..." />
-        ) : activeTestRuns === null && orderTestRuns.error ? (
-          <ErrorState
-            error={orderTestRuns.error}
-            message="Unable to load test runs. Please try again."
-            onRetry={orderTestRuns.refetch}
-            title="Test runs unavailable"
-          />
-        ) : activeTestRuns && activeTestRuns.length === 0 ? (
-          <EmptyState
-            title="No test runs found"
-            message="No test runs were found for this order."
-          />
-        ) : activeTestRuns ? (
-          <>
-            {orderTestRuns.loading ? (
-              <p role="status" style={{ color: "var(--color-text-secondary)" }}>
-                Refreshing test runs...
-              </p>
-            ) : null}
-            <TestRunSelector
-              disabled={orderTestRuns.loading}
-              onSelect={handleRunSelect}
-              selectedRunId={selectedRunId}
-              testRuns={activeTestRuns}
-            />
-            {selectedTestRun === null ? (
-              <EmptyState
-                title="No test run selected"
-                message="Select a test run to view results."
-              />
-            ) : (
-              <>
-                <FinalRunWorkflow
-                  key={`${selectedOrderId}:${selectedTestRun.id_run}`}
-                  disabled={orderTestRuns.loading}
-                  isActive={isActiveWorkflow}
-                  onRefetch={orderTestRuns.refetch}
-                  selectedRun={selectedTestRun}
-                />
-                <SimrsSyncWorkflow
-                  key={`${selectedOrderId}:${selectedTestRun.id_run}`}
-                  disabled={orderTestRuns.loading}
-                  isActive={isActiveWorkflow}
-                  onRefetch={orderTestRuns.refetch}
-                  selectedRun={selectedTestRun}
-                />
-                {selectedTestRun.results.length === 0 ? (
-                  <EmptyState
-                    title="No results found"
-                    message="No results were found for this test run."
-                  />
-                ) : (
-                  <ResultTable results={selectedTestRun.results} />
-                )}
-              </>
-            )}
-          </>
-        ) : null
-      ) : null}
-    </>
-  ) : null;
+  let view;
+  if (detailTarget !== null) {
+    view = (
+      <OrderDetailView
+        key={`order:${detailTarget.idOrder}`}
+        nomorRm={detailTarget.nomorRm}
+        initialVisitId={detailTarget.idVisit}
+        initialOrderId={detailTarget.idOrder}
+        onBack={() => setDetailTarget(null)}
+      />
+    );
+  } else if (searchNomorRm !== null) {
+    view = (
+      <OrderDetailView
+        key={`search:${searchGeneration}`}
+        nomorRm={searchNomorRm}
+        onBack={() => setSearchNomorRm(null)}
+      />
+    );
+  } else if (instruments.loading && instruments.data === null) {
+    view = <LoadingState message="Loading instruments…" />;
+  } else if (instruments.error && instruments.data === null) {
+    view = (
+      <ErrorState
+        error={instruments.error}
+        message="Unable to load instruments. Please try again."
+        onRetry={instruments.refetch}
+        title="Instruments unavailable"
+      />
+    );
+  } else if (selectedInstrumentId === null || activeInstrument === null) {
+    view = (
+      <EmptyState
+        title="No instrument selected"
+        message="Select an instrument to view its worklist."
+      />
+    );
+  } else {
+    view = (
+      <OrderOverviewView
+        instrumentId={selectedInstrumentId}
+        instrumentName={activeInstrument.nama_mesin}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        page={page}
+        onDateChange={handleDateChange}
+        onPageChange={setPage}
+        onOpenOrder={handleOpenOrder}
+      />
+    );
+  }
 
   return (
-    <MainLayout
-      filterBarProps={{
-        onSearchSubmit: handleSearchSubmit,
-        onSearchValueChange: setSearchInput,
+    <AppShell
+      sidebar={
+        <Sidebar
+          instruments={instruments.data}
+          loading={instruments.loading}
+          error={instruments.error}
+          onRetry={instruments.refetch}
+          activeInstrumentId={selectedInstrumentId}
+          onSelect={handleSelectInstrument}
+        />
+      }
+      searchProps={{
         searchValue: searchInput,
-      }}
-      stickyStatusBarProps={{
-        error: instruments.error,
-        instrumentStatuses: instruments.data,
-        loading: instruments.loading,
-        onRetry: instruments.refetch,
+        onSearchValueChange: setSearchInput,
+        onSearchSubmit: handleSearchSubmit,
       }}
     >
-      {patientContent}
-    </MainLayout>
+      {view}
+    </AppShell>
   );
 }
 

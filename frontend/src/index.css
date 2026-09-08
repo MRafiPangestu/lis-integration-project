@@ -7,6 +7,12 @@
   --color-surface-hover: #F0F4F8;
   --color-border: #D1D5DB;
 
+  /* Sidebar (M8.5) — the only design-system addition; a dark surface
+     harmonised with --color-text-primary (#111827). */
+  --color-sidebar-bg: #111827;
+  --color-sidebar-hover: #1F2937;
+  --color-sidebar-text: #E5E7EB;
+
   /* Text Colors */
   --color-text-primary: #111827;
   --color-text-secondary: #6B7280;
