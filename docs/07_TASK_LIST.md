@@ -456,15 +456,21 @@ Extend the Integration Service to handle concurrent connections from all 9 instr
 **Completion Notes:**
 - **M8.3** (parser registry): Parser interface moved to `parsers` package. Static exact-match registry with no fallback/inference/dynamic import/DB dependency. `ParserNotRegisteredError` replaces `InstrumentConfigError` for unknown parser keys. BC-5150 parser pre-registered. Startup validation retained. 107 backend tests pass.
 
-- [ ] **M8.4** — Patient Overview API
-  - [ ] Before implementation, define: row identity, latest-run definition, finality definition, delivery-status definition, abnormal-count definition
-  - [ ] Treat the overview as an order-oriented operational view that still displays patient identity (drill-down targets an order); do not promise patient-level identity resolution the current BC-5150 data cannot support
-  - [ ] Use a deterministic `latest run` definition with `run_sequence` as the primary ordering signal
-  - [ ] Derive finality and delivery status consistently from the final run at order scope; define the no-final-run case explicitly
-  - [ ] Compute abnormal count as `flag_abnormalitas IS NOT NULL`, matching the current parser semantics (`'N'` and empty values are normalized to `NULL`; abnormal flags such as `'H~N'` are normalized to `'H'`). Confirm with a one-time query that no unexpected legacy values exist before relying on this predicate.
-  - [ ] Implement `GET /api/instruments/{instrument_id}/patients` with instrument scope, a date bound for operational use, and deterministic server-side pagination (no keyset pagination unless necessary)
-  - [ ] Put derivation logic in a service layer, not the router
-  - [ ] Create the query-performance indexes this endpoint requires as part of M8.4 database work, based on verified schema; do not invent indexes for tables/columns whose state is not verified by repository evidence
+- [x] **M8.4** — Instrument Order Overview API
+  - [x] Row grain frozen as **one Order** (not Patient/Visit/TestRun); an order is included when the requested instrument has ≥ 1 TestRun for it (EXISTS semi-join, no fan-out); patient identity is displayed but the view stays order-grained
+  - [x] Effective run = M7's finality-first selection restricted to the requested instrument: `ORDER BY is_final DESC, run_sequence DESC, id_run DESC` → first row (no `waktu_run` ordering key; `run_sequence` is NOT NULL / MAX+1 / UNIQUE per order, `id_run DESC` is the defensive tie-breaker)
+  - [x] `is_final` taken from the effective run; no-final-run is a normal state, not an error
+  - [x] `delivery_status` / `delivered_at` = effective run's values when it is the final run, else **NULL** (no synthetic delivery state introduced; TestRun state machine unchanged)
+  - [x] Abnormal count = `COUNT(results WHERE flag_abnormalitas IS NOT NULL)` for the **effective run only** (never summed across reruns / the whole order)
+  - [x] Date filter on `Order.waktu_order`, half-open `[date_from, date_to)`, both required, `date_to > date_from` (422 otherwise), no implicit "today"; timestamps treated as server-local naive datetimes (schema is `TIMESTAMP WITHOUT TIME ZONE`, single-site on-premise) — no timezone schema change
+  - [x] Endpoint is `GET /api/instruments/{instrument_id}/orders` (corrected from `/patients` — the API is order-grained). Unknown instrument → 404; valid request with no matching orders → 200 `items: []`, `total: 0`
+  - [x] Offset/limit pagination (`page` ≥ 1 default 1, `page_size` 1–100 default 50); response `{items, page, page_size, total}`; final order `waktu_order DESC, id_order DESC` (mandatory `id_order` tie-breaker); `total` is the true qualifying order count, never inflated by run/result joins
+  - [x] New summary schema `OrderOverviewRow` / `PaginatedOrderOverviewResponse` in `app/schemas/overview.py` — no clinical result values (does not reuse the M7 detail schema); `total_runs` omitted (optional, not required by the MVP contract)
+  - [x] Derivation logic in `app/services/overview_service.py` (`get_instrument_order_overview`) using PostgreSQL `LATERAL` for the single effective run + scoped abnormal count; router only validates params / instrument existence and delegates
+  - [x] Four additive query-performance indexes in migration `4aff9e134f16` (down_revision `c5465739f048`): `test_runs (id_instrument, id_order)`, `orders (id_visit)`, `visits (id_pasien)`, `orders (waktu_order DESC, id_order DESC)`. Optional 5th index on `test_runs (id_order, is_final DESC, run_sequence DESC)` NOT added — EXPLAIN showed the existing `uk_order_run_sequence` fully covers the 1–3-row effective-run ordering.
+
+**Completion Notes:**
+- **M8.4** (instrument order overview): order-grained, instrument-scoped operational worklist consistent with M7 detail semantics. Service-layer LATERAL query, no row fan-out, accurate `total`. 27 PostgreSQL tests (`tests/test_order_overview.py`). 134 backend tests pass. Ingestion / classification / identity / ACK / parser registry / TestRun workflow unchanged.
 
 - [ ] **M8.5** — Enterprise Dashboard Integration
   - [ ] Implement instrument sidebar navigation
@@ -490,7 +496,7 @@ Extend the Integration Service to handle concurrent connections from all 9 instr
 - The concrete BC-5150 classification rule (M8.2b) remains blocked until field evidence exists.
 - The specimen → visit/order identity rule is defined from verified instrument behavior before production multi-instrument ingestion.
 - Parser abstraction and registry select parsers from explicit configuration; unbound instruments fail loudly; ASTM deferred.
-- Patient Overview API is instrument-scoped, date-bound, and server-paginated, with derivation in a service layer and defined finality / delivery / abnormal-count semantics.
+- Order Overview API (`/api/instruments/{id}/orders`) is order-grained, instrument-scoped, date-bound, and server-paginated, with derivation in a service layer and finality / delivery / abnormal-count taken from the M7-consistent effective run.
 - Dashboard provides instrument-based navigation and drills down into reused M7 clinical components without rewriting them.
 
 ---
@@ -579,6 +585,7 @@ M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6
 | M8.2 — Ingestion Hardening & Classification | ✅ Complete |
 | M8.2b — BC-5150 Background Rule | ✅ Complete (field-verified) |
 | M8.3 — Parser Registry | ✅ Complete |
-| M8.4–M8.5 — Patient Overview & Dashboard | Not Started |
+| M8.4 — Instrument Order Overview API | ✅ Complete |
+| M8.5 — Enterprise Dashboard Integration | Not Started |
 | M9 — QA & Hardening | Not Started |
 
