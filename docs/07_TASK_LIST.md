@@ -427,12 +427,17 @@ Extend the Integration Service to handle concurrent connections from all 9 instr
 
 **Completion Notes:**
 - **M8.2** (486880c): Ingestion Hardening & Generic Classification — Raw-message persistence on all transaction paths (T1 parser=None, T2 parser exception, T3 post-parse IntegrityError). Parser-independent failure ACK from MSH-10. Generic fail-closed classification mechanism with PATIENT_RESULT / NON_PATIENT / UNCLASSIFIED / UNPARSEABLE states. IS-type OBX metadata preserved. Exact-retransmission and run_sequence semantics preserved. 28 new ingestion tests. 75 total backend tests passing.
-- **M8.2b** (Concrete BC-5150 Classification Rule) — **REMAINS BLOCKED** pending field evidence of BC-5150 background / QC / calibration samples. No vendor-specific rule implemented.
+- **M8.2b** (38a40fb): Fail-Closed BC-5150 Background Rule — Field evidence from physical BC-5150 (patient samples 30/31, Background runs) confirms OBR-3 = "Background" identifies non-patient samples. Rule implemented and fail-closed. QC/calibration/maintenance remain unclassified pending further field evidence. Patient ingestion available only through explicit unverified_passthrough policy. 92 backend tests pass.
 
-- [ ] **M8.2b** — Field-Verified BC-5150 Classification Rule
-  - [ ] **BLOCKED** — pending field evidence or recovered PoC evidence of a BC-5150 background / QC / calibration sample (none is currently committed to the repository)
-  - [ ] Once evidence exists, define the concrete BC-5150 classification rule against it
-  - [ ] Do not commit a hardcoded background formula (e.g. `OBR-3 == "Background"`) or any other vendor-specific rule until evidence exists
+- [x] **M8.2b** — Field-Verified BC-5150 Classification Rule
+  - [x] Field evidence obtained and committed: physical BC-5150 patient samples 30/31 and Background runs
+    - Implemented in 38a40fb: OBR-3 stripped and casefolded equals "background" -> NON_PATIENT / OBR3_BACKGROUND
+  - [x] Once evidence exists, define the concrete BC-5150 classification rule against it
+    - Implemented in 38a40fb: _bc5150_field_verified() policy encodes only the field-proven fact
+  - [x] Do not commit a hardcoded background formula (e.g. `OBR-3 == "Background"`) or any other vendor-specific rule until evidence exists
+    - Verified in 38a40fb: only OBR-3 "Background" is encoded; no QC/calibration/maintenance/Take Mode inference; fail-closed -> UNCLASSIFIED
+  - [ ] Extend beyond Background if additional field evidence emerges for QC, calibration, maintenance, control
+    - Not completed: QC/calibration/maintenance classification remain UNCLASSIFIED pending further field-verified evidence
 
 - [ ] **M8.3** — Protocol Abstraction & Parser Registry
   - [ ] Define a common parser interface/adapter for message ingestion (keep minimal)
@@ -563,7 +568,7 @@ M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6
 | M7 — Frontend | 🟢 Complete |
 | M8.1 — Instrument Config & Supervisor | ✅ Complete |
 | M8.2 — Ingestion Hardening & Classification | ✅ Complete |
-| M8.2b — BC-5150 Classification Rule | 🔒 Blocked (pending field evidence) |
+| M8.2b — BC-5150 Background Rule | ✅ Complete (field-verified) |
 | M8.3–M8.5 — Parser Registry & Dashboard | Not Started |
 | M9 — QA & Hardening | Not Started |
 
