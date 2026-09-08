@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Callable, List, Optional
 from datetime import datetime
 
 @dataclass
@@ -36,3 +36,10 @@ class ParsedHL7:
     order: ParsedOrder
     results: List[ParsedResult] = field(default_factory=list)
     is_metadata: List[ParsedObxMetadata] = field(default_factory=list)
+
+
+# Parser interface (single authoritative home; relocated from repository.py in
+# M8.3). A parser is a plain callable: raw message text -> ParsedHL7, or None
+# when the message is not parseable. Intentionally not an ABC/Protocol — there
+# is one concrete parser and no evidence yet for a hierarchy.
+ParserFn = Callable[[str], Optional[ParsedHL7]]
