@@ -9,7 +9,7 @@
       "parser_key": "bc5150_hl7",
       "identity_prefix": "BC5150-",
       "enabled": true,
-      "classification_policy": "strict"
+      "classification_policy": "bc5150_field_verified"
     }
   ]
 }

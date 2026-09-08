@@ -22,8 +22,11 @@ from app.integration.repository import process_message
 from app.models import (
     Instrument,
     InstrumentMessage,
+    Order,
+    Patient,
     Result,
     TestRun,
+    Visit,
 )
 from app.models.base import Base
 
@@ -33,6 +36,7 @@ SessionTest = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 STRICT = lambda parsed: classify(parsed, resolve_policy("strict"))
 PASSTHROUGH = lambda parsed: classify(parsed, resolve_policy("unverified_passthrough"))
+BC5150 = lambda parsed: classify(parsed, resolve_policy("bc5150_field_verified"))
 
 
 # --- fixtures -------------------------------------------------------------
@@ -441,3 +445,230 @@ def test_clinical_persistence_matches_parser_output_when_gate_open(session, inst
     assert m.parse_status == "Success"
     assert m.message_class == "PATIENT_RESULT"
     assert m.classification_rule == "unverified_passthrough"
+
+
+# =====================================================================
+# K. M8.2b — field-verified BC-5150 "Background" classification rule
+# =====================================================================
+#
+# Field evidence (committed captures / physical UI screenshots):
+#   * patient samples 28, 29, 30, 31 — PID metadata present, numeric results
+#   * "Background" run — OBR-3 literally "Background", PID-3 empty,
+#     WBC ~0.05, RBC 0.00, PLT 0-1, histogram/scattergram present
+#
+# The ONLY field-verified fact: OBR-3 (normalised) == "background" -> NON_PATIENT.
+# Everything else stays UNCLASSIFIED (fail closed). There is no field evidence
+# that a non-"Background" message is a patient result, and QC / calibration /
+# maintenance / control categories are unverified — so the policy must never
+# emit PATIENT_RESULT.
+
+
+def bc5150_background_message(control_id="BG359", obr3="Background") -> bytes:
+    """Real field-shaped BC-5150 Background capture (sample 359)."""
+    segs = [
+        r"MSH|^~\&|||||20260901150000||ORU^R01|" + control_id + r"|P|2.3.1||||||UNICODE",
+        "PID|1||||||||",  # PID-3 empty, no patient identity
+        "PV1|1",
+        f"OBR|1||{obr3}|00001^Automated Count^99MRC|||20260901150000|||||||||||||||||HM||||||||Administrator",
+        "OBX|1|IS|08001^Take Mode^99MRC||O||||||F",
+        "OBX|2|NM|6690-2^WBC^LN||0.06|10*3/uL|4.00-10.00|L|||F",
+        "OBX|3|NM|789-8^RBC^LN||0.00|10*6/uL|3.50-5.50|L|||F",
+        "OBX|4|NM|4544-3^HCT^LN||0.0|%|37.0-54.0|L|||F",
+        "OBX|5|NM|777-3^PLT^LN||1|10*3/uL|100-300|L|||F",
+        "OBX|6|IS|00700^WBC Histogram^99MRC||AAECAwQF||||||F",
+    ]
+    return "\r".join(segs).encode("utf-8")
+
+
+def bc5150_patient_message(control_id="P30", obr3="30", *, pid3_empty=False) -> bytes:
+    """Field-shaped BC-5150 patient sample (30/31)."""
+    pid = "PID|1||||||||" if pid3_empty else "PID|1||M000123^^^^MR||^supartini|||Female"
+    segs = [
+        r"MSH|^~\&|||||20260901145257||ORU^R01|" + control_id + r"|P|2.3.1||||||UNICODE",
+        pid,
+        "PV1|1",
+        f"OBR|1||{obr3}|00001^Automated Count^99MRC|||20260901145257|||||||||||||||||HM||||||||Administrator",
+        "OBX|1|IS|08001^Take Mode^99MRC||O||||||F",
+        "OBX|2|NM|6690-2^WBC^LN||7.50|10*3/uL|4.00-10.00|N|||F",
+        "OBX|3|NM|718-7^HGB^LN||13.2|g/dL|11.0-16.0|N|||F",
+    ]
+    return "\r".join(segs).encode("utf-8")
+
+
+# --- classifier unit level (deterministic, DB-free) -------------------
+
+def test_bc5150_background_message_is_non_patient():
+    parsed = parse_hl7_bc5150(bc5150_background_message().decode())
+    assert parsed is not None
+    assert parsed.order.specimen_no == "Background"  # parser keeps OBR-3 as data
+    c = classify(parsed, resolve_policy("bc5150_field_verified"))
+    assert c.message_class is MessageClass.NON_PATIENT
+    assert c.classification_rule == "OBR3_BACKGROUND"
+
+
+@pytest.mark.parametrize("obr3", ["Background", "background", "BACKGROUND", "  Background  ", "background\t"])
+def test_bc5150_background_normalisation(obr3):
+    parsed = parse_hl7_bc5150(bc5150_background_message(obr3=obr3).decode())
+    c = classify(parsed, resolve_policy("bc5150_field_verified"))
+    assert c.message_class is MessageClass.NON_PATIENT
+    assert c.classification_rule == "OBR3_BACKGROUND"
+
+
+def test_bc5150_second_background_capture_is_non_patient():
+    # WBC 0.05 / RBC 0.00 / PLT 0 variant
+    raw = "\r".join([
+        r"MSH|^~\&|||||20260901151500||ORU^R01|BG2|P|2.3.1||||||UNICODE",
+        "PID|1||||||||",
+        r"OBR|1||Background|00001^Automated Count^99MRC|||20260901151500",
+        "OBX|1|NM|6690-2^WBC^LN||0.05|10*3/uL|4.00-10.00|L|||F",
+        "OBX|2|NM|789-8^RBC^LN||0.00|10*6/uL|3.50-5.50|L|||F",
+        "OBX|3|NM|777-3^PLT^LN||0|10*3/uL|100-300|L|||F",
+    ])
+    c = classify(parse_hl7_bc5150(raw), resolve_policy("bc5150_field_verified"))
+    assert c.message_class is MessageClass.NON_PATIENT
+
+
+def test_bc5150_non_background_is_unclassified_not_patient_or_non_patient():
+    # Real patient samples 30/31: the Background rule must not misfire on them,
+    # but there is no field evidence to positively call them PATIENT_RESULT, so
+    # the fail-closed outcome is UNCLASSIFIED.
+    for obr3 in ("30", "31"):
+        parsed = parse_hl7_bc5150(bc5150_patient_message(obr3=obr3).decode())
+        c = classify(parsed, resolve_policy("bc5150_field_verified"))
+        assert c.message_class is MessageClass.UNCLASSIFIED, obr3
+        assert c.classification_rule == "BC5150_BACKGROUND_ONLY"
+        assert c.message_class is not MessageClass.PATIENT_RESULT
+        assert c.message_class is not MessageClass.NON_PATIENT
+
+
+def test_bc5150_field_verified_never_emits_patient_result():
+    # Structural fail-closed property: no non-"Background" input can become
+    # PATIENT_RESULT merely by not matching "Background".
+    samples = [
+        bc5150_patient_message(obr3="30"),
+        bc5150_patient_message(obr3="31", pid3_empty=True),
+        bc5150_background_message(obr3="QC"),
+        bc5150_background_message(obr3="Calibration"),
+        bc5150_background_message(obr3="Control"),
+        bc5150_background_message(obr3="Maintenance"),
+        bc5150_background_message(obr3=""),
+        bc5150_background_message(obr3="Backgroundish"),
+    ]
+    for raw in samples:
+        c = classify(parse_hl7_bc5150(raw.decode()), resolve_policy("bc5150_field_verified"))
+        assert c.message_class is not MessageClass.PATIENT_RESULT, raw
+
+
+def test_bc5150_unverified_non_patient_categories_stay_unclassified():
+    # QC / Calibration etc. are NOT "Background" and have no field evidence:
+    # they must be UNCLASSIFIED, never NON_PATIENT (no formula invented) and
+    # never PATIENT_RESULT.
+    for obr3 in ("QC", "Calibration", "Maintenance", "Control"):
+        c = classify(
+            parse_hl7_bc5150(bc5150_background_message(obr3=obr3).decode()),
+            resolve_policy("bc5150_field_verified"),
+        )
+        assert c.message_class is MessageClass.UNCLASSIFIED, obr3
+        assert c.classification_rule == "BC5150_BACKGROUND_ONLY"
+
+
+def test_bc5150_pid3_empty_alone_does_not_yield_non_patient():
+    # OBR-3 = "30" but PID-3 completely empty -> not NON_PATIENT (PID-3 is not a
+    # discriminator); fail-closed outcome is UNCLASSIFIED.
+    parsed = parse_hl7_bc5150(bc5150_patient_message(obr3="30", pid3_empty=True).decode())
+    assert parsed.patient.nomor_rm == ""  # PID-3 really is empty
+    c = classify(parsed, resolve_policy("bc5150_field_verified"))
+    assert c.message_class is not MessageClass.NON_PATIENT
+    assert c.message_class is MessageClass.UNCLASSIFIED
+
+
+def test_bc5150_zero_values_alone_do_not_yield_non_patient():
+    # Near-zero numerics with OBR-3 = "31": values are not a discriminator, so
+    # not NON_PATIENT; fail-closed outcome is UNCLASSIFIED.
+    raw = "\r".join([
+        r"MSH|^~\&|||||20260901145300||ORU^R01|P31|P|2.3.1||||||UNICODE",
+        "PID|1||M000999^^^^MR||^lowcount|||Male",
+        r"OBR|1||31|00001^Automated Count^99MRC|||20260901145300",
+        "OBX|1|NM|6690-2^WBC^LN||0.06|10*3/uL|4.00-10.00|L|||F",
+        "OBX|2|NM|777-3^PLT^LN||1|10*3/uL|100-300|L|||F",
+    ])
+    c = classify(parse_hl7_bc5150(raw), resolve_policy("bc5150_field_verified"))
+    assert c.message_class is not MessageClass.NON_PATIENT
+    assert c.message_class is MessageClass.UNCLASSIFIED
+
+
+# --- full ingestion (PostgreSQL) -------------------------------------
+
+def test_bc5150_background_full_ingestion_creates_no_clinical_rows(session, instrument_id):
+    tr = run_message(bc5150_background_message(control_id="BG359"), instrument_id, classify_fn=BC5150)
+
+    # raw message persisted with queryable classification metadata
+    m = session.scalars(select(InstrumentMessage)).one()
+    assert m.raw_message.startswith("MSH")
+    assert m.parse_status == "Success"
+    assert m.message_class == "NON_PATIENT"
+    assert m.classification_rule == "OBR3_BACKGROUND"
+
+    # no clinical or synthetic-identity rows at all
+    assert count(session, TestRun) == 0
+    assert count(session, Result) == 0
+    assert count(session, Patient) == 0
+    assert count(session, Visit) == 0
+    assert count(session, Order) == 0
+
+    # normal ACK behaviour preserved (message received & stored)
+    assert tr.acks == [("BG359", True, "")]
+
+
+def test_bc5150_non_background_full_ingestion_is_unclassified_no_clinical_rows(session, instrument_id):
+    # Under the field-verified policy, sample 30 is UNCLASSIFIED -> raw only.
+    tr = run_message(bc5150_patient_message(control_id="P30", obr3="30"), instrument_id, classify_fn=BC5150)
+
+    m = session.scalars(select(InstrumentMessage)).one()
+    assert m.raw_message.startswith("MSH")
+    assert m.parse_status == "Success"
+    assert m.message_class == "UNCLASSIFIED"
+    assert m.classification_rule == "BC5150_BACKGROUND_ONLY"
+
+    assert count(session, TestRun) == 0
+    assert count(session, Result) == 0
+    assert count(session, Patient) == 0
+    assert count(session, Visit) == 0
+    assert count(session, Order) == 0
+    assert tr.acks == [("P30", True, "")]
+
+
+def test_bc5150_background_and_non_background_both_stay_out_of_clinical_tables(session, instrument_id):
+    run_message(bc5150_background_message(control_id="BG"), instrument_id, classify_fn=BC5150)
+    run_message(bc5150_patient_message(control_id="P31", obr3="31"), instrument_id, classify_fn=BC5150)
+
+    assert count(session, TestRun) == 0
+    assert count(session, Result) == 0
+    classes = sorted(m.message_class for m in session.scalars(select(InstrumentMessage)).all())
+    assert classes == ["NON_PATIENT", "UNCLASSIFIED"]
+
+
+def test_bc5150_patient_ingestion_remains_available_as_separate_explicit_decision(session, instrument_id):
+    # The clinical path is preserved, but as an explicit owner decision
+    # (`unverified_passthrough`) — it is NOT hidden inside bc5150_field_verified.
+    tr = run_message(bc5150_patient_message(control_id="P30", obr3="30"), instrument_id, classify_fn=PASSTHROUGH)
+
+    run = session.scalars(select(TestRun)).one()
+    assert (run.run_sequence, run.is_final, run.delivery_status) == (1, False, "pending")
+    results = session.scalars(select(Result).order_by(Result.id_hasil)).all()
+    assert [(r.parameter_tes, r.nilai_hasil) for r in results] == [("WBC", "7.50"), ("HGB", "13.2")]
+    m = session.scalars(select(InstrumentMessage)).one()
+    assert m.message_class == "PATIENT_RESULT"
+    assert m.classification_rule == "unverified_passthrough"
+    assert tr.acks == [("P30", True, "")]
+
+
+# --- configuration wiring -------------------------------------------
+
+def test_bc5150_field_verified_policy_is_selectable_and_documented():
+    from app.core.config import BACKEND_DIR, load_instrument_configs
+
+    assert resolve_policy("bc5150_field_verified") is not None
+    cfgs = load_instrument_configs(BACKEND_DIR / "instruments.example.json")
+    bc5150 = next(c for c in cfgs if c.instrument_name == "Mindray BC-5150")
+    assert bc5150.classification_policy == "bc5150_field_verified"

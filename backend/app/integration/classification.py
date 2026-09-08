@@ -3,11 +3,16 @@
 Pure and database-free. Given a parsed message and a policy, decide whether the
 message may enter clinical persistence.
 
-The mechanism encodes no vendor-specific rule. The concrete production policy
-for an instrument is a configuration decision
+The mechanism itself encodes no vendor-specific rule. The concrete production
+policy for an instrument is a configuration decision
 (``InstrumentConfig.classification_policy``); an instrument with no policy
-configured resolves to ``strict`` -> ``UNCLASSIFIED``. The evidence-based
-BC-5150 rule is M8.2b and is deliberately not implemented here.
+configured resolves to ``strict`` -> ``UNCLASSIFIED``.
+
+``bc5150_field_verified`` is the M8.2b policy: it is the only vendor-specific
+rule, it is opt-in via configuration, and it is grounded solely in committed
+field captures from the physical Mindray BC-5150. It stays fail-closed — it
+identifies the "Background" run as NON_PATIENT and leaves everything else
+UNCLASSIFIED (see ``_bc5150_field_verified``).
 """
 from __future__ import annotations
 
@@ -42,6 +47,8 @@ RULE_STRICT = "strict"
 RULE_PASSTHROUGH = "unverified_passthrough"
 RULE_UNPARSEABLE = "unparseable"
 RULE_CLASSIFIER_ERROR = "classifier_error"
+RULE_OBR3_BACKGROUND = "OBR3_BACKGROUND"
+RULE_BC5150_BACKGROUND_ONLY = "BC5150_BACKGROUND_ONLY"
 
 # A policy is a pure function over a successfully parsed message. It is never
 # called with ``None`` — :func:`classify` handles the unparseable case.
@@ -62,9 +69,38 @@ def _unverified_passthrough(parsed: "ParsedHL7") -> Classification:
     return Classification(MessageClass.PATIENT_RESULT, RULE_PASSTHROUGH)
 
 
+def _bc5150_field_verified(parsed: "ParsedHL7") -> Classification:
+    """Field-verified Mindray BC-5150 rule (M8.2b).
+
+    Committed field captures prove exactly one thing: the instrument's own
+    non-patient "Background" run is reported with OBR-3 literally "Background"
+    and no patient identity. That is the only fact this policy encodes.
+
+        OBR-3 (whitespace- and case-normalized) == "background"
+            -> NON_PATIENT / OBR3_BACKGROUND
+        anything else
+            -> UNCLASSIFIED / BC5150_BACKGROUND_ONLY   (fail closed, like `strict`)
+
+    It is deliberately NOT assumed that a non-"Background" message is a patient
+    result: there is no field evidence for QC / calibration / maintenance /
+    control categories, so those must not become PATIENT_RESULT merely by not
+    matching "Background". Patient ingestion, when the owner accepts that risk,
+    is a separate explicit decision (`unverified_passthrough`), not hidden here.
+
+    Deliberately NOT used as discriminators (no field evidence supports them):
+    PID-3 emptiness, low/zero numeric values, histogram/scattergram presence,
+    Take/Blood/Test Mode, 99MRC identifiers, or the ORU^R01 trigger itself.
+    """
+    specimen = (parsed.order.specimen_no or "").strip().casefold()
+    if specimen == "background":
+        return Classification(MessageClass.NON_PATIENT, RULE_OBR3_BACKGROUND)
+    return Classification(MessageClass.UNCLASSIFIED, RULE_BC5150_BACKGROUND_ONLY)
+
+
 _POLICIES: "dict[str, Policy]" = {
     "strict": _strict,
     "unverified_passthrough": _unverified_passthrough,
+    "bc5150_field_verified": _bc5150_field_verified,
 }
 
 KNOWN_POLICIES = frozenset(_POLICIES)
