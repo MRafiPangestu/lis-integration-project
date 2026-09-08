@@ -486,6 +486,14 @@ Extend the Integration Service to handle concurrent connections from all 9 instr
 **Completion Notes:**
 - **M8.5** (enterprise dashboard): state-based two-view shell (Sidebar + Overview/Detail), M8.4 order-overview worklist, M7 detail extracted to `OrderDetailView` and reused by both the worklist drill-down and the legacy MRN search. `StickyStatusBar` retired from the shell (file retained). Four additive sidebar/overview frontend modules + three CSS tokens; no backend, migration, M8.3/M8.4, or clinical-component change. No React Router, no new global state, no polling, no frontend test framework.
 
+- [ ] **M8.6** — Frontend Visual Polish (per `docs/M8.6_Investigation.md`)
+  - [ ] Retune five existing design tokens (`--color-background`, `--color-border`, `--color-sidebar-bg/-hover/-text`) and add ten structural tokens + five semantic tints in `index.css`; no second palette, no new dependency
+  - [ ] Sidebar: brand block, `INSTRUMENTS` section label, filled pill items, 8px status dot; keep `id_instrument` identity, `aria-current`, the status word (never colour-only) and the ~900px icon-rail breakpoint
+  - [ ] Header becomes instrument-aware (`nama_mesin` + `protokol · tipe_koneksi` + `Last status`) and hosts the MRN search; new props optional so `MainLayout` still compiles. No Sync button, no Port field — neither exists in the API contract
+  - [ ] Remove the double chrome around `FilterBar`; collapse `OverviewHeader` + `DateRangeFilter` into one chrome-free toolbar; fold the worklist table, empty row and pagination into a single panel
+  - [ ] Visual only: no backend, API, schema, navigation, date-serialization, instrument-identity, page-size or accessibility change; `OrderDetailView`, all clinical/workflow/status components, hooks, `api/` and `types/` stay untouched
+  - [ ] Verification: `npm run build` clean; `npm run lint` exactly 13 errors with the same rule set and zero in overview/layout files; manual V3–V18 checklist against `lis_marina_permata_dev`
+
 ## Dependencies
 
 - **M3** — Single-instrument integration must work on new schema.
@@ -592,5 +600,6 @@ M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6
 | M8.3 — Parser Registry | ✅ Complete |
 | M8.4 — Instrument Order Overview API | ✅ Complete |
 | M8.5 — Enterprise Dashboard Integration | ✅ Complete |
+| M8.6 — Frontend Visual Polish | Not Started |
 | M9 — QA & Hardening | Not Started |
 
