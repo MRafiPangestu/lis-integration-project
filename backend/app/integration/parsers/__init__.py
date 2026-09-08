@@ -22,9 +22,17 @@ class ParsedResult:
     reference_range_snapshot: Optional[str]
 
 @dataclass
+class ParsedObxMetadata:
+    """Inert IS-typed OBX metadata, retained for future evidence-based
+    classification (M8.2b). Never interpreted by the current pipeline."""
+    obx_type: str          # "IS"
+    identifier: str        # raw OBX-3, e.g. "08001^Take Mode^99MRC"
+    value: str             # raw OBX-5
+
+@dataclass
 class ParsedHL7:
     control_id: str
     patient: ParsedPatient
     order: ParsedOrder
     results: List[ParsedResult] = field(default_factory=list)
-
+    is_metadata: List[ParsedObxMetadata] = field(default_factory=list)
