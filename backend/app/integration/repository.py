@@ -22,13 +22,12 @@ from sqlalchemy.orm import Session
 
 from app.integration.classification import Classification, MessageClass
 from app.integration.mllp import extract_control_id
-from app.integration.parsers import ParsedHL7
+from app.integration.parsers import ParsedHL7, ParserFn
 from app.integration.protocols import InstrumentTransport
 from app.models import InstrumentMessage, Order, Patient, Result, TestRun, Visit
 
 log = logging.getLogger(__name__)
 
-ParserFn = Callable[[str], Optional[ParsedHL7]]
 ClassifyFn = Callable[[Optional[ParsedHL7]], Classification]
 
 RULE_PARSER_ERROR = "unparseable.parser_error"

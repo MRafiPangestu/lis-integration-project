@@ -439,13 +439,22 @@ Extend the Integration Service to handle concurrent connections from all 9 instr
   - [ ] Extend beyond Background if additional field evidence emerges for QC, calibration, maintenance, control
     - Not completed: QC/calibration/maintenance classification remain UNCLASSIFIED pending further field-verified evidence
 
-- [ ] **M8.3** — Protocol Abstraction & Parser Registry
-  - [ ] Define a common parser interface/adapter for message ingestion (keep minimal)
-  - [ ] Implement a parser registry
-  - [ ] Select parsers dynamically using explicit instrument configuration
-  - [ ] Keep the BC-5150 HL7 parser as the first concrete implementation
-  - [ ] Unregistered or unbound instruments fail loudly — no silent fallback
-  - [ ] Defer ASTM until field-verified evidence exists; no speculative protocol-family hierarchies or plugin discovery systems
+- [x] **M8.3** — Protocol Abstraction & Parser Registry
+  - [x] Define a common parser interface/adapter for message ingestion (keep minimal)
+    - Implemented: `ParserFn = Callable[[str], Optional[ParsedHL7]]` type alias in `parsers/__init__.py`
+  - [x] Implement a parser registry
+    - Implemented: Static `_PARSERS` dictionary in `parsers/registry.py` with exact-match lookup
+  - [x] Select parsers dynamically using explicit instrument configuration
+    - Implemented: `resolve_parser(parser_key)` returns parser from registry; startup pre-validation before Supervisor
+  - [x] Keep the BC-5150 HL7 parser as the first concrete implementation
+    - Registered as `bc5150_hl7`: `"bc5150_hl7": parse_hl7_bc5150`
+  - [x] Unregistered or unbound instruments fail loudly — no silent fallback
+    - Implemented: `ParserNotRegisteredError` on unknown key; exact dictionary lookup only
+  - [x] Defer ASTM until field-verified evidence exists; no speculative protocol-family hierarchies or plugin discovery systems
+    - Verified: Static registry, no dynamic import, no plugin discovery, no fallback inference
+
+**Completion Notes:**
+- **M8.3** (parser registry): Parser interface moved to `parsers` package. Static exact-match registry with no fallback/inference/dynamic import/DB dependency. `ParserNotRegisteredError` replaces `InstrumentConfigError` for unknown parser keys. BC-5150 parser pre-registered. Startup validation retained. 107 backend tests pass.
 
 - [ ] **M8.4** — Patient Overview API
   - [ ] Before implementation, define: row identity, latest-run definition, finality definition, delivery-status definition, abnormal-count definition
@@ -569,6 +578,7 @@ M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6
 | M8.1 — Instrument Config & Supervisor | ✅ Complete |
 | M8.2 — Ingestion Hardening & Classification | ✅ Complete |
 | M8.2b — BC-5150 Background Rule | ✅ Complete (field-verified) |
-| M8.3–M8.5 — Parser Registry & Dashboard | Not Started |
+| M8.3 — Parser Registry | ✅ Complete |
+| M8.4–M8.5 — Patient Overview & Dashboard | Not Started |
 | M9 — QA & Hardening | Not Started |
 

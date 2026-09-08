@@ -2,9 +2,9 @@
 
 Instrument connectivity is read from the per-instrument configuration contract
 (`backend/instruments.json`, see `instruments.example.json`). This entrypoint
-binds each enabled instrument to its parser and database identity and hands the
-worker set to the supervisor, which detects worker-thread death, restarts it,
-and runs a deterministic shutdown. The dynamic parser registry is M8.3.
+binds each enabled instrument to its parser (via the M8.3 parser registry) and
+database identity and hands the worker set to the supervisor, which detects
+worker-thread death, restarts it, and runs a deterministic shutdown.
 """
 import functools
 import signal
@@ -15,28 +15,12 @@ from app.core.database import SessionLocal
 from app.integration import classification
 from app.integration.client import InstrumentClient
 from app.integration.instruments import (
-    InstrumentConfigError,
     RuntimeInstrument,
     load_runtime_instruments,
 )
-from app.integration.parsers.hl7 import parse_hl7_bc5150
+from app.integration.parsers.registry import resolve_parser
 from app.integration.repository import process_message
 from app.integration.supervisor import Supervisor
-
-# Minimal parser binding for M8.1. Dynamic, config-driven parser selection is M8.3.
-_PARSERS = {
-    "bc5150_hl7": parse_hl7_bc5150,
-}
-
-
-def resolve_parser(parser_key: str):
-    try:
-        return _PARSERS[parser_key]
-    except KeyError:
-        raise InstrumentConfigError(
-            f"No parser bound for parser_key {parser_key!r}. "
-            f"Known parser keys: {sorted(_PARSERS)}."
-        )
 
 
 def make_handler(runtime: RuntimeInstrument, parser, classify_fn):
@@ -95,7 +79,7 @@ def main() -> None:
               "and enable an instrument.")
         sys.exit(1)
 
-    # Fail fast on an unknown parser_key, before any worker or status write.
+    # Fail fast on an unregistered parser_key, before any worker or status write.
     for runtime in runtimes:
         resolve_parser(runtime.config.parser_key)
 
