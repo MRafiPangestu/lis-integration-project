@@ -472,14 +472,19 @@ Extend the Integration Service to handle concurrent connections from all 9 instr
 **Completion Notes:**
 - **M8.4** (instrument order overview): order-grained, instrument-scoped operational worklist consistent with M7 detail semantics. Service-layer LATERAL query, no row fan-out, accurate `total`. 27 PostgreSQL tests (`tests/test_order_overview.py`). 134 backend tests pass. Ingestion / classification / identity / ACK / parser registry / TestRun workflow unchanged.
 
-- [ ] **M8.5** — Enterprise Dashboard Integration
-  - [ ] Implement instrument sidebar navigation
-  - [ ] Display the paginated Patient Overview table
-  - [ ] Drill down from an overview row into the existing M7 clinical detail workflow
-  - [ ] Extract the M7 detail body from `App.tsx` into a reusable detail view accepting an initial patient identifier and order identifier
-  - [ ] Reuse existing M7 components; do not rewrite `ResultTable`, `ResultRow`, `ResultFlag`, `TestRunSelector`, `FinalRunWorkflow`, or `SimrsSyncWorkflow`
-  - [ ] Use view state for navigation; do not add React Router unless a later requirement proves URL routing is necessary
-  - [ ] Resolve whether the new sidebar replaces the existing `StickyStatusBar` to avoid duplicate instrument-navigation responsibilities
+- [x] **M8.5** — Enterprise Dashboard Integration (per `docs/M8.5_Investigation.md`)
+  - [x] Permanent left `Sidebar` (`components/layout/Sidebar.tsx`): 240px, all instruments from `GET /api/instruments/status` (`id_instrument` as identity — never array index, never a hardcoded PoC id), status dot + text reusing the `CONNECTED / RECONNECTING / DISCONNECTED / UNKNOWN` vocabulary, `aria-current="page"` + accent on the active item, no polling, manual `refetch` retry, 64px icon rail below ~900px
+  - [x] `StickyStatusBar` retired from the shell (superseded by the sidebar); the file is kept untouched for reversibility. New `AppShell` (`components/layout/AppShell.tsx`) replaces `MainLayout`'s two-column role; `FilterBar` relocated into the shell as the always-available MRN lookup that drives the search→detail path
+  - [x] `OrderOverviewView` consumes the M8.4 `GET /api/instruments/{id}/orders` via `useInstrumentOrders` (fixed `page_size` 25) and `getInstrumentOrders` (`URLSearchParams`, `apiClient.get`). Compact semantic `<table>` worklist — one Order per row, patient name as the primary anchor; columns Patient / Order time (`waktu_order`, dd/MM HH:mm) / Status (`status_order` + `Final` badge, `delivery_status` badge, `Not finalised` UI label when `delivery_status === null`) / Abnormal (`—` at 0, else icon + count + text, `--color-flag-high`) / chevron affordance. `Run N` shown only when `effective_run_sequence > 1`
+  - [x] `DateRangeFilter`: two `<input type="datetime-local">` + Today / Yesterday / Last 7 days presets, default Today `[00:00, next 00:00)`. Values sent **verbatim** as server-local naive strings — no `toISOString()`, no `Z`, no offset (verified in the network trace). `date_to <= date_from` shows an inline error and suppresses the request; the API 422 is only a fallback. Any date change resets `page` to 1
+  - [x] Server-side offset `Pagination`: `‹ Previous` / `Next ›` + "Showing X–Y of Z"; Previous disabled at `page === 1`, Next disabled when `page * page_size >= total`; no page-number list, no cursor pagination
+  - [x] State-based navigation in `App` (no React Router, no Redux/Zustand/Context): `activeInstrumentId`, `detailTarget: { nomorRm, idVisit, idOrder } | null`, `dateFrom` / `dateTo`, `page`, plus the legacy `searchNomorRm`. Row click → `detailTarget` carries **all three** of `nomor_rm` + `id_visit` + `id_order`; instrument switch clears `detailTarget` and resets `page`; overview filter/page state lives in `App` so returning from detail restores context with no refetch of state
+  - [x] `OrderDetailView` (`components/detail/OrderDetailView.tsx`) — **extraction, not a rewrite**: the M7 detail state, helpers, effects, handlers and render body moved verbatim from `App.tsx` with props `{ nomorRm, initialVisitId?, initialOrderId?, onBack? }`. Visit/order preselection seeded from the props so the coordinating effects validate rather than override; the M7 effective-run rule and all clinical components (`PatientSummary`, `VisitOrderSelector`, `TestRunSelector`, `FinalRunWorkflow`, `SimrsSyncWorkflow`, `ResultTable`, `ResultRow`, `ResultFlag`, `ConfirmationDialog`, `ToastProvider`) are unchanged. The legacy MRN search renders the same component with no `initial*` ids, preserving today's behaviour
+  - [x] Styling: current-branch design system remains authoritative; the only addition is the three sidebar tokens in `index.css` (`--color-sidebar-bg` / `--color-sidebar-hover` / `--color-sidebar-text`, harmonised with `#111827`). No React Router, no second palette, no PoC visual system, no PoC instrument data
+  - [x] Manual verification against `lis_marina_permata_dev` (9 real instruments): sidebar list, default = first API instrument, instrument switch, worklist rendering, `Not finalised` / abnormal signals, date presets + verbatim serialization (no `Z`), page-reset-on-change, pagination bounds, row click opening the **exact** clicked order (not the newest), Back restoring the worklist, and the legacy MRN search all confirmed working. `npm run build` passes; `npm run lint` unchanged from baseline (13 pre-existing errors, 0 new)
+
+**Completion Notes:**
+- **M8.5** (enterprise dashboard): state-based two-view shell (Sidebar + Overview/Detail), M8.4 order-overview worklist, M7 detail extracted to `OrderDetailView` and reused by both the worklist drill-down and the legacy MRN search. `StickyStatusBar` retired from the shell (file retained). Four additive sidebar/overview frontend modules + three CSS tokens; no backend, migration, M8.3/M8.4, or clinical-component change. No React Router, no new global state, no polling, no frontend test framework.
 
 ## Dependencies
 
@@ -586,6 +591,6 @@ M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6
 | M8.2b — BC-5150 Background Rule | ✅ Complete (field-verified) |
 | M8.3 — Parser Registry | ✅ Complete |
 | M8.4 — Instrument Order Overview API | ✅ Complete |
-| M8.5 — Enterprise Dashboard Integration | Not Started |
+| M8.5 — Enterprise Dashboard Integration | ✅ Complete |
 | M9 — QA & Hardening | Not Started |
 
