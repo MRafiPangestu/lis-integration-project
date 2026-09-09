@@ -9,6 +9,7 @@ export interface SidebarProps {
   onRetry: () => Promise<void>;
   activeInstrumentId: number | null;
   onSelect: (instrumentId: number) => void;
+  expanded?: boolean;
 }
 
 // Mirrors StickyStatusBar.statusColor(): the same three-value vocabulary plus
@@ -56,6 +57,40 @@ const asideBase: CSSProperties = {
   overflowY: "auto",
   display: "flex",
   flexDirection: "column",
+  transition: "width .2s ease",
+};
+
+const brandGlyph = (
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+  </svg>
+);
+
+const skeletonRowStyle: CSSProperties = {
+  height: 34,
+  margin: "var(--space-2) 0",
+  borderRadius: "var(--radius-md)",
+  backgroundColor: "var(--color-sidebar-hover)",
+  opacity: 0.6,
+};
+
+const srOnly: CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  overflow: "hidden",
+  clip: "rect(0 0 0 0)",
+  whiteSpace: "nowrap",
 };
 
 export function Sidebar({
@@ -65,58 +100,115 @@ export function Sidebar({
   onRetry,
   activeInstrumentId,
   onSelect,
+  expanded = true,
 }: SidebarProps) {
   const isNarrow = useIsNarrow();
-  const width = isNarrow ? 64 : 240;
+  const [hoveredId, setHoveredId] = useState<number | null>(null);
+  // ≤900px forces the rail; above it, the operator's toggle decides.
+  const collapsed = isNarrow || !expanded;
+  const width = collapsed ? 64 : 260;
 
   return (
-    <aside
-      aria-label="Instruments"
-      style={{ ...asideBase, width }}
-    >
+    <aside id="instrument-sidebar" aria-label="Instruments" style={{ ...asideBase, width }}>
       <div
         style={{
-          padding: isNarrow ? "var(--space-3) 0" : "var(--space-4)",
+          padding: "var(--space-6) var(--space-4)",
           borderBottom: "1px solid var(--color-sidebar-hover)",
-          textAlign: isNarrow ? "center" : "left",
+          display: "flex",
+          alignItems: "center",
+          overflow: "hidden",
         }}
       >
-        <span style={{ fontWeight: 700, fontSize: isNarrow ? "0.85rem" : "1rem" }}>
-          {isNarrow ? "LIS" : "LIS Middleware"}
+        <span
+          aria-hidden="true"
+          style={{
+            width: 32,
+            height: 32,
+            flexShrink: 0,
+            borderRadius: "var(--radius-md)",
+            backgroundColor: "var(--color-primary)",
+            color: "var(--color-sidebar-active)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {brandGlyph}
+        </span>
+        {/* Text stays mounted so it can fade/slide with the width change instead
+            of snapping in and out; max-width and margin collapse to zero so it
+            never pushes the icon or spills past the 64px rail. */}
+        <span
+          className="lis-sidebar-brand"
+          aria-hidden={collapsed || undefined}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 0,
+            marginLeft: collapsed ? 0 : "var(--space-3)",
+            maxWidth: collapsed ? 0 : "180px",
+            overflow: "hidden",
+            whiteSpace: "nowrap",
+            opacity: collapsed ? 0 : 1,
+          }}
+        >
+          <span
+            style={{
+              fontSize: "1.125rem",
+              fontWeight: 700,
+              color: "var(--color-sidebar-active)",
+              lineHeight: 1.2,
+            }}
+          >
+            LIS Server
+          </span>
+          <span style={{ fontSize: "0.75rem", color: "var(--color-sidebar-text)" }}>
+            Marina Permata
+          </span>
         </span>
       </div>
 
       <nav
         aria-label="Instrument list"
-        style={{ display: "flex", flexDirection: "column", padding: "var(--space-2) 0" }}
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          overflowY: "auto",
+          padding: "var(--space-4) var(--space-3)",
+        }}
       >
+        {collapsed ? null : (
+          <p
+            style={{
+              fontSize: "0.6875rem",
+              fontWeight: 600,
+              letterSpacing: "0.05em",
+              textTransform: "uppercase",
+              color: "var(--color-sidebar-text)",
+              marginBottom: "var(--space-3)",
+              paddingLeft: "var(--space-3)",
+            }}
+          >
+            Instruments
+          </p>
+        )}
+
         {loading ? (
-          <div style={{ padding: "var(--space-2) var(--space-4)" }}>
+          <div>
             {[0, 1, 2].map((row) => (
-              <div
-                key={row}
-                aria-hidden="true"
-                style={{
-                  height: 32,
-                  margin: "var(--space-2) 0",
-                  borderRadius: 4,
-                  backgroundColor: "var(--color-sidebar-hover)",
-                  opacity: 0.6,
-                }}
-              />
+              <div key={row} aria-hidden="true" style={skeletonRowStyle} />
             ))}
-            <span style={{ position: "absolute", width: 1, height: 1, overflow: "hidden" }}>
-              Loading instruments
-            </span>
+            <span style={srOnly}>Loading instruments</span>
           </div>
         ) : error ? (
           <div
             role="alert"
             style={{
-              padding: "var(--space-3) var(--space-4)",
               display: "flex",
               flexDirection: "column",
               gap: "var(--space-2)",
+              padding: "var(--space-3)",
               fontSize: "0.8rem",
             }}
           >
@@ -130,7 +222,7 @@ export function Sidebar({
                 alignSelf: "flex-start",
                 background: "none",
                 border: "1px solid var(--color-sidebar-hover)",
-                borderRadius: 4,
+                borderRadius: "var(--radius-sm)",
                 color: "var(--color-sidebar-text)",
                 cursor: "pointer",
                 padding: "var(--space-1) var(--space-2)",
@@ -142,58 +234,81 @@ export function Sidebar({
         ) : instruments && instruments.length > 0 ? (
           instruments.map((instrument) => {
             const isActive = instrument.id_instrument === activeInstrumentId;
+            const isHovered = instrument.id_instrument === hoveredId;
             const status = normalizeStatus(instrument.connection_status);
+            const dotColor = statusColor(status);
+            const highlighted = isActive || isHovered;
 
             return (
               <button
                 key={instrument.id_instrument}
                 type="button"
                 onClick={() => onSelect(instrument.id_instrument)}
+                onMouseEnter={() => setHoveredId(instrument.id_instrument)}
+                onMouseLeave={() =>
+                  setHoveredId((current) =>
+                    current === instrument.id_instrument ? null : current,
+                  )
+                }
                 aria-current={isActive ? "page" : undefined}
                 title={`${instrument.nama_mesin} — ${status}`}
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "var(--space-2)",
+                  gap: "var(--space-3)",
                   width: "100%",
                   textAlign: "left",
-                  background: isActive ? "var(--color-sidebar-hover)" : "transparent",
+                  background: highlighted ? "var(--color-sidebar-hover)" : "transparent",
                   border: "none",
-                  borderLeft: isActive
-                    ? "3px solid var(--color-primary)"
-                    : "3px solid transparent",
-                  color: "var(--color-sidebar-text)",
+                  borderRadius: "var(--radius-md)",
+                  marginBottom: "var(--space-1)",
+                  color: highlighted
+                    ? "var(--color-sidebar-active)"
+                    : "var(--color-sidebar-text)",
                   cursor: "pointer",
                   font: "inherit",
-                  padding: isNarrow
-                    ? "var(--space-3) 0"
-                    : "var(--space-2) var(--space-4)",
-                  justifyContent: isNarrow ? "center" : "flex-start",
+                  fontWeight: isActive ? 600 : 400,
+                  padding: collapsed ? "var(--space-3) 0" : "10px var(--space-3)",
+                  justifyContent: collapsed ? "center" : "flex-start",
                 }}
               >
                 <span
                   aria-hidden="true"
-                  style={{ color: statusColor(status), flexShrink: 0, fontSize: "0.8rem" }}
-                >
-                  ●
-                </span>
-                {isNarrow ? null : (
+                  style={{
+                    width: 8,
+                    height: 8,
+                    flexShrink: 0,
+                    borderRadius: "50%",
+                    background: dotColor,
+                    color: dotColor,
+                    boxShadow:
+                      isActive && status === "CONNECTED"
+                        ? "0 0 6px currentColor"
+                        : undefined,
+                  }}
+                />
+                {collapsed ? (
+                  <span style={srOnly}>
+                    {instrument.nama_mesin} — {status}
+                  </span>
+                ) : (
                   <span style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
                     <span
                       style={{
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
-                        fontSize: "0.9rem",
-                        fontWeight: isActive ? 600 : 500,
+                        fontSize: "0.8125rem",
                       }}
                     >
                       {instrument.nama_mesin}
                     </span>
                     <span
                       style={{
-                        fontSize: "0.75rem",
-                        color: "var(--color-text-disabled)",
+                        fontSize: "0.6875rem",
+                        textTransform: "uppercase",
+                        color: "var(--color-sidebar-text)",
+                        opacity: 0.8,
                       }}
                     >
                       {status}
@@ -204,7 +319,7 @@ export function Sidebar({
             );
           })
         ) : (
-          <p style={{ padding: "var(--space-3) var(--space-4)", fontSize: "0.8rem" }}>
+          <p style={{ padding: "var(--space-3)", fontSize: "0.8rem" }}>
             No instruments available.
           </p>
         )}

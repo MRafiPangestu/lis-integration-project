@@ -72,7 +72,7 @@ export function PatientSummary({
       style={{
         backgroundColor: "var(--color-surface)",
         border: "1px solid var(--color-border)",
-        borderRadius: "4px",
+        borderRadius: "var(--radius-md)",
         padding: "var(--space-4)",
       }}
     >

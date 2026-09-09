@@ -12,7 +12,7 @@ export function LoadingState({ message = "Loading..." }: LoadingStateProps) {
         alignItems: "center",
         backgroundColor: "var(--color-surface)",
         border: "1px solid var(--color-border)",
-        borderRadius: "4px",
+        borderRadius: "var(--radius-md)",
         color: "var(--color-text-secondary)",
         display: "flex",
         gap: "var(--space-2)",

@@ -25,7 +25,7 @@ export function ErrorState({
       style={{
         backgroundColor: "var(--color-surface)",
         border: "1px solid var(--color-border)",
-        borderRadius: "4px",
+        borderRadius: "var(--radius-md)",
         padding: "var(--space-6)",
       }}
     >
@@ -35,18 +35,16 @@ export function ErrorState({
       <p style={{ color: "var(--color-text-secondary)" }}>{displayMessage}</p>
       {onRetry ? (
         <button
+          className="lis-btn lis-btn--primary"
           type="button"
           onClick={() => {
             void onRetry()
           }}
           style={{
-            backgroundColor: "var(--color-primary)",
             border: "1px solid var(--color-primary)",
-            borderRadius: "4px",
             color: "var(--color-surface)",
             cursor: "pointer",
             marginTop: "var(--space-4)",
-            padding: "var(--space-2) var(--space-3)",
           }}
         >
           Retry

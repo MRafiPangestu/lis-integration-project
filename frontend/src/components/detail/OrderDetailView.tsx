@@ -367,16 +367,13 @@ export function OrderDetailView({
       {onBack ? (
         <div>
           <button
+            className="lis-btn lis-btn--ghost"
             type="button"
             onClick={onBack}
             style={{
-              background: "none",
               border: "1px solid var(--color-border)",
-              borderRadius: "4px",
               color: "var(--color-primary)",
               cursor: "pointer",
-              fontSize: "0.875rem",
-              padding: "var(--space-1) var(--space-3)",
             }}
           >
             ← Back to worklist

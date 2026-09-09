@@ -107,7 +107,7 @@ export function ConfirmationDialog({
         style={{
           backgroundColor: "var(--color-surface)",
           border: "1px solid var(--color-border)",
-          borderRadius: "4px",
+          borderRadius: "var(--radius-lg)",
           maxWidth: "480px",
           padding: "var(--space-6)",
           width: "100%",
@@ -120,10 +120,10 @@ export function ConfirmationDialog({
           {message}
         </p>
         <div style={{ display: "flex", gap: "var(--space-2)", justifyContent: "flex-end", marginTop: "var(--space-6)" }}>
-          <button disabled={loading} onClick={onCancel} type="button">
+          <button className="lis-btn lis-btn--secondary" disabled={loading} onClick={onCancel} type="button">
             {cancelLabel}
           </button>
-          <button disabled={loading} onClick={() => void onConfirm()} type="button">
+          <button className="lis-btn lis-btn--primary" disabled={loading} onClick={() => void onConfirm()} type="button">
             {loading ? "Working..." : confirmLabel}
           </button>
         </div>

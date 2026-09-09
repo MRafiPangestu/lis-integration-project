@@ -99,7 +99,7 @@ export function FinalRunWorkflow({
       style={{
         backgroundColor: "var(--color-surface)",
         border: "1px solid var(--color-border)",
-        borderRadius: "4px",
+        borderRadius: "var(--radius-md)",
         padding: "var(--space-4)",
       }}
     >
@@ -113,6 +113,7 @@ export function FinalRunWorkflow({
           </p>
           {canUnfinalize ? (
             <button
+              className="lis-btn lis-btn--secondary"
               disabled={workflowDisabled}
               onClick={() => setPendingAction("unfinalize")}
               type="button"
@@ -127,6 +128,7 @@ export function FinalRunWorkflow({
         </>
       ) : (
         <button
+          className="lis-btn lis-btn--primary"
           disabled={workflowDisabled}
           onClick={() => setPendingAction("finalize")}
           type="button"

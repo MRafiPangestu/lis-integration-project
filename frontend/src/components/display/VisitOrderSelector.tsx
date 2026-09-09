@@ -89,7 +89,7 @@ export function VisitOrderSelector({
       style={{
         backgroundColor: "var(--color-surface)",
         border: "1px solid var(--color-border)",
-        borderRadius: "4px",
+        borderRadius: "var(--radius-md)",
         display: "grid",
         gap: "var(--space-3)",
         gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
@@ -106,11 +106,12 @@ export function VisitOrderSelector({
         <select
           disabled={disabled || sortedVisits.length === 0}
           id="visit-selector"
+          className="lis-select"
           onChange={(event) => onVisitSelect(Number(event.target.value))}
           value={selectedVisitId ?? ""}
           style={{
             border: "1px solid var(--color-border)",
-            borderRadius: "4px",
+            borderRadius: "var(--radius-sm)",
             color: "var(--color-text-primary)",
             padding: "var(--space-2)",
           }}
@@ -132,11 +133,12 @@ export function VisitOrderSelector({
         <select
           disabled={disabled || sortedOrders.length === 0}
           id="order-selector"
+          className="lis-select"
           onChange={(event) => onOrderSelect(Number(event.target.value))}
           value={selectedOrderId ?? ""}
           style={{
             border: "1px solid var(--color-border)",
-            borderRadius: "4px",
+            borderRadius: "var(--radius-sm)",
             color: "var(--color-text-primary)",
             padding: "var(--space-2)",
           }}

@@ -67,7 +67,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               alignItems: "flex-start",
               backgroundColor: "var(--color-surface)",
               border: `1px solid ${toast.kind === "error" ? "var(--color-flag-high)" : "var(--color-flag-normal)"}`,
-              borderRadius: "4px",
+              borderRadius: "var(--radius-md)",
               boxShadow: "0 4px 12px rgba(17, 24, 39, 0.15)",
               display: "flex",
               gap: "var(--space-3)",
