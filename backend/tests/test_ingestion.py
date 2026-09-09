@@ -648,6 +648,196 @@ def test_bc5150_background_and_non_background_both_stay_out_of_clinical_tables(s
     assert classes == ["NON_PATIENT", "UNCLASSIFIED"]
 
 
+# --- M9.3: evidence state after BC-5150 field session 1 ---------------
+#
+# Session 1 (docs/09_PHYSICAL_INSTRUMENT_VALIDATION.md §5.5) verified the
+# Background rule live and produced the first patient/Background field
+# comparison. It did NOT produce a QC, calibration, control or maintenance
+# capture, so no positive PATIENT_RESULT rule is approved (§9.5).
+#
+# Two shapes below come from that session and are not represented by the
+# older fixtures:
+#   * PID-3 is the literal "^^^^MR" in BOTH patient and Background frames —
+#     components empty, so it discriminates nothing.
+#   * Background carries clinical-style NM values, including a masked HGB.
+#
+# The historical Comm. All corpus additionally contains 20 messages with an
+# empty PID-5 and a numeric OBR-3. Those are NOT proven to be QC; they may be
+# unlabelled patient specimens, control material, or another workflow. They
+# must therefore stay UNCLASSIFIED.
+#
+# Patient names in these fixtures are pseudonymised tokens (§3 of the
+# validation document), never real identifiers.
+
+
+def bc5150_observed_patient_message(control_id="P42", obr3="42") -> bytes:
+    """Session-1 patient shape: PID-3 '^^^^MR', PID-5 populated, IS metadata."""
+    return "\r".join([
+        r"MSH|^~\&|||||20260909141852||ORU^R01|" + control_id + r"|P|2.3.1||||||UNICODE",
+        "PID|1||^^^^MR||^PT-01|||Female",
+        f"OBR|1||{obr3}|00001^Automated Count^99MRC|||20230518195453|||||||||||||||||HM||||||||Administrator",
+        "OBX|1|IS|08001^Take Mode^99MRC||O||||||F",
+        "OBX|2|IS|08003^Test Mode^99MRC||CBC+DIFF||||||F",
+        "OBX|3|NM|6690-2^WBC^LN||13.13|10*3/uL|4.00-10.00|H|||F",
+        "OBX|4|NM|718-7^HGB^LN||11.6|g/dL|11.0-16.0|N|||F",
+    ]).encode("utf-8")
+
+
+def bc5150_unlabelled_numeric_message(control_id="U01", obr3="43") -> bytes:
+    """The unidentified corpus shape: empty PID-5, numeric OBR-3, CBC payload.
+
+    Ground truth is UNKNOWN — it may be an unlabelled patient specimen or
+    non-patient material. It must not be classified either way.
+    """
+    return "\r".join([
+        r"MSH|^~\&|||||20260909142000||ORU^R01|" + control_id + r"|P|2.3.1||||||UNICODE",
+        "PID|1||^^^^MR",
+        f"OBR|1||{obr3}|00001^Automated Count^99MRC|||20230518200000|||||||||||||||||HM",
+        "OBX|1|IS|08001^Take Mode^99MRC||O||||||F",
+        "OBX|2|NM|6690-2^WBC^LN||6.80|10*3/uL|4.00-10.00|N|||F",
+        "OBX|3|NM|718-7^HGB^LN||12.9|g/dL|11.0-16.0|N|||F",
+    ]).encode("utf-8")
+
+
+def bc5150_observed_background_message(control_id="BG4") -> bytes:
+    """Session-1 Background shape: no PID-5 field, masked HGB, no IS metadata."""
+    return "\r".join([
+        r"MSH|^~\&|||||20260909142344||ORU^R01|" + control_id + r"|P|2.3.1||||||UNICODE",
+        "PID|1||^^^^MR",
+        r"OBR|1||Background|00001^Automated Count^99MRC|||20230822094531|||||||||||||||||HM",
+        "OBX|1|NM|6690-2^WBC^LN||0.05|10*3/uL|4.00-10.00|L|||F",
+        "OBX|2|NM|789-8^RBC^LN||0.00|10*6/uL|3.50-5.50|L|||F",
+        "OBX|3|ST|718-7^HGB^LN||*****|g/dL|11.0-16.0||||F",
+        "OBX|4|NM|4544-3^HCT^LN||0.0|%|37.0-54.0|L|||F",
+        "OBX|5|NM|777-3^PLT^LN||0|10*3/uL|100-300|L|||F",
+    ]).encode("utf-8")
+
+
+def test_bc5150_observed_pid3_shape_is_not_a_discriminator():
+    # '^^^^MR' appears in BOTH categories and parses to an empty nomor_rm, so
+    # only OBR-3 separates them.
+    patient = parse_hl7_bc5150(bc5150_observed_patient_message().decode())
+    background = parse_hl7_bc5150(bc5150_observed_background_message().decode())
+
+    assert patient.patient.nomor_rm == ""
+    assert background.patient.nomor_rm == ""
+
+    assert classify(patient, resolve_policy("bc5150_field_verified")).message_class \
+        is MessageClass.UNCLASSIFIED
+    assert classify(background, resolve_policy("bc5150_field_verified")).message_class \
+        is MessageClass.NON_PATIENT
+
+
+def test_bc5150_named_patient_like_message_is_not_patient_result():
+    # PID-5 populated + numeric OBR-3. No approved rule promotes this, so the
+    # fail-closed outcome stands (§9.5: positive patient rule NOT APPROVED).
+    parsed = parse_hl7_bc5150(bc5150_observed_patient_message().decode())
+    assert parsed.patient.nama_lengkap == "PT-01"  # PID-5 really is populated
+    assert parsed.order.specimen_no == "42"        # OBR-3 really is numeric
+
+    c = classify(parsed, resolve_policy("bc5150_field_verified"))
+    assert c.message_class is MessageClass.UNCLASSIFIED
+    assert c.classification_rule == "BC5150_BACKGROUND_ONLY"
+    assert c.message_class is not MessageClass.PATIENT_RESULT
+
+
+@pytest.mark.parametrize("obr3", ["43", "1", "359", "1010"])
+def test_bc5150_unlabelled_numeric_specimen_is_unclassified(obr3):
+    # Empty PID-5 + numeric OBR-3: ground truth UNKNOWN. Must be neither
+    # PATIENT_RESULT nor NON_PATIENT — emptiness of PID-5 must not imply QC.
+    parsed = parse_hl7_bc5150(bc5150_unlabelled_numeric_message(obr3=obr3).decode())
+    assert parsed.patient.nama_lengkap == "UNKNOWN"  # PID-5 absent -> sentinel
+    assert parsed.results, "fixture must carry a clinical payload"
+
+    c = classify(parsed, resolve_policy("bc5150_field_verified"))
+    assert c.message_class is MessageClass.UNCLASSIFIED, obr3
+    assert c.classification_rule == "BC5150_BACKGROUND_ONLY"
+    assert c.message_class is not MessageClass.NON_PATIENT
+    assert c.message_class is not MessageClass.PATIENT_RESULT
+
+
+def test_bc5150_is_metadata_alone_does_not_yield_patient_result():
+    # IS metadata (Take/Test Mode) is parsed but must not drive classification.
+    parsed = parse_hl7_bc5150(bc5150_observed_patient_message().decode())
+    assert len(parsed.is_metadata) == 2, "fixture must actually carry IS metadata"
+
+    c = classify(parsed, resolve_policy("bc5150_field_verified"))
+    assert c.message_class is MessageClass.UNCLASSIFIED
+    assert c.message_class is not MessageClass.PATIENT_RESULT
+
+
+def test_bc5150_background_clinical_style_obx_does_not_override_background():
+    # Background emits accepted clinical values (WBC 0.05, RBC 0.00, PLT 0) and
+    # a masked HGB. Presence of a clinical payload is not a patient signal.
+    parsed = parse_hl7_bc5150(bc5150_observed_background_message().decode())
+    values = {r.parameter_tes: r.nilai_hasil for r in parsed.results}
+    assert values["WBC"] == "0.05" and values["RBC"] == "0.00" and values["HGB"] == "*****"
+    assert not parsed.is_metadata, "session-1 Background carried no IS metadata"
+
+    c = classify(parsed, resolve_policy("bc5150_field_verified"))
+    assert c.message_class is MessageClass.NON_PATIENT
+    assert c.classification_rule == "OBR3_BACKGROUND"
+
+
+def test_bc5150_rule_tokens_are_stable_and_distinct():
+    # The two BC-5150 tokens are part of the persisted contract
+    # (instrument_messages.classification_rule) and must not drift.
+    from app.integration.classification import (
+        RULE_BC5150_BACKGROUND_ONLY,
+        RULE_OBR3_BACKGROUND,
+    )
+
+    assert RULE_OBR3_BACKGROUND == "OBR3_BACKGROUND"
+    assert RULE_BC5150_BACKGROUND_ONLY == "BC5150_BACKGROUND_ONLY"
+    assert RULE_OBR3_BACKGROUND != RULE_BC5150_BACKGROUND_ONLY
+
+    policy = resolve_policy("bc5150_field_verified")
+    emitted = {
+        classify(parse_hl7_bc5150(raw.decode()), policy).classification_rule
+        for raw in (
+            bc5150_observed_background_message(),
+            bc5150_observed_patient_message(),
+            bc5150_unlabelled_numeric_message(),
+        )
+    }
+    assert emitted == {RULE_OBR3_BACKGROUND, RULE_BC5150_BACKGROUND_ONLY}
+
+
+def test_bc5150_unlabelled_numeric_full_ingestion_creates_no_clinical_rows(session, instrument_id):
+    # The decisive safety property for the unidentified corpus: raw audit row
+    # only, positive ACK, and zero clinical or synthetic-identity rows.
+    tr = run_message(bc5150_unlabelled_numeric_message(control_id="U01"), instrument_id,
+                     classify_fn=BC5150)
+
+    m = session.scalars(select(InstrumentMessage)).one()
+    assert m.parse_status == "Success"
+    assert m.message_class == "UNCLASSIFIED"
+    assert m.classification_rule == "BC5150_BACKGROUND_ONLY"
+
+    assert count(session, TestRun) == 0
+    assert count(session, Result) == 0
+    assert count(session, Patient) == 0
+    assert count(session, Visit) == 0
+    assert count(session, Order) == 0
+    assert tr.acks == [("U01", True, "")]
+
+
+def test_bc5150_observed_session1_shapes_stay_out_of_clinical_tables(session, instrument_id):
+    # All three session-1 shapes together: only the Background one is classified.
+    run_message(bc5150_observed_background_message(control_id="BG4"), instrument_id, classify_fn=BC5150)
+    run_message(bc5150_observed_patient_message(control_id="P42"), instrument_id, classify_fn=BC5150)
+    run_message(bc5150_unlabelled_numeric_message(control_id="U01"), instrument_id, classify_fn=BC5150)
+
+    assert count(session, TestRun) == 0
+    assert count(session, Result) == 0
+    assert count(session, Patient) == 0
+    assert count(session, Visit) == 0
+    assert count(session, Order) == 0
+
+    classes = sorted(m.message_class for m in session.scalars(select(InstrumentMessage)).all())
+    assert classes == ["NON_PATIENT", "UNCLASSIFIED", "UNCLASSIFIED"]
+
+
 def test_bc5150_patient_ingestion_remains_available_as_separate_explicit_decision(session, instrument_id):
     # The clinical path is preserved, but as an explicit owner decision
     # (`unverified_passthrough`) — it is NOT hidden inside bc5150_field_verified.
