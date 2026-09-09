@@ -4,6 +4,7 @@ import threading
 from datetime import datetime
 from typing import Callable
 
+from app.integration.mllp import extract_frames
 from app.integration.protocols import InstrumentTransport
 from app.integration.instruments import write_instrument_status
 
@@ -62,9 +63,6 @@ class InstrumentClient(InstrumentTransport):
         raise NotImplementedError("Outbound commands not yet implemented.")
 
     def recv_loop(self, on_message: Callable[[bytes, InstrumentTransport], None]) -> None:
-        MLLP_SB = 0x0B
-        MLLP_END = b'\x1c\x0d'
-
         while not self._stop_event.is_set():
             print(f"[*] Connecting to {self.host}:{self.port}...")
 
@@ -89,12 +87,8 @@ class InstrumentClient(InstrumentTransport):
 
                             buffer += data
 
-                            while MLLP_END in buffer:
-                                end_pos = buffer.index(MLLP_END)
-                                start_pos = 1 if len(buffer) > 0 and buffer[0] == MLLP_SB else 0
-                                raw_frame = buffer[start_pos:end_pos]
-                                buffer = buffer[end_pos + 2:]
-
+                            frames, buffer = extract_frames(buffer)
+                            for raw_frame in frames:
                                 on_message(raw_frame, self)
 
                         except socket.timeout:
