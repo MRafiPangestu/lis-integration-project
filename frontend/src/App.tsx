@@ -15,6 +15,9 @@ function App() {
 
   const [activeInstrumentId, setActiveInstrumentId] = useState<number | null>(null);
   const [detailTarget, setDetailTarget] = useState<OverviewDetailTarget | null>(null);
+  // Instrument list is visible on every load; the operator can collapse it.
+  // No persistence — a reload always returns to expanded.
+  const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [initialRange] = useState(todayRange);
   const [dateFrom, setDateFrom] = useState(initialRange[0]);
   const [dateTo, setDateTo] = useState(initialRange[1]);
@@ -106,6 +109,11 @@ function App() {
         onDateChange={handleDateChange}
         onPageChange={setPage}
         onOpenOrder={handleOpenOrder}
+        searchProps={{
+          searchValue: searchInput,
+          onSearchValueChange: setSearchInput,
+          onSearchSubmit: handleSearchSubmit,
+        }}
       />
     );
   }
@@ -120,13 +128,12 @@ function App() {
           onRetry={instruments.refetch}
           activeInstrumentId={selectedInstrumentId}
           onSelect={handleSelectInstrument}
+          expanded={sidebarExpanded}
         />
       }
-      searchProps={{
-        searchValue: searchInput,
-        onSearchValueChange: setSearchInput,
-        onSearchSubmit: handleSearchSubmit,
-      }}
+      activeInstrument={activeInstrument}
+      sidebarExpanded={sidebarExpanded}
+      onToggleSidebar={() => setSidebarExpanded((open) => !open)}
     >
       {view}
     </AppShell>

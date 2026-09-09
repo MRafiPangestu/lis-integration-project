@@ -23,21 +23,27 @@ function formatOrderTime(value: string): string {
 }
 
 const cellStyle: CSSProperties = {
-  borderBottom: "1px solid var(--color-border)",
-  padding: "var(--space-2) var(--space-3)",
+  borderBottom: "1px solid var(--color-border-subtle)",
+  padding: "14px var(--space-5)",
   verticalAlign: "middle",
 };
 
-const badgeStyle: CSSProperties = {
-  border: "1px solid var(--color-border)",
-  borderRadius: "999px",
-  fontSize: "0.72rem",
-  padding: "1px var(--space-2)",
+const pillStyle: CSSProperties = {
+  borderRadius: "var(--radius-sm)",
+  fontSize: "0.6875rem",
+  fontWeight: 600,
+  padding: "2px var(--space-2)",
   whiteSpace: "nowrap",
 };
 
+const neutralPillStyle: CSSProperties = {
+  ...pillStyle,
+  background: "var(--color-neutral-bg)",
+  color: "var(--color-text-secondary)",
+};
+
 export function OrderOverviewRow({ row, onOpen }: OrderOverviewRowProps) {
-  const [focused, setFocused] = useState(false);
+  const [highlighted, setHighlighted] = useState(false);
   const activate = () => onOpen(row);
 
   const showRun = row.effective_run_sequence !== null && row.effective_run_sequence > 1;
@@ -45,20 +51,31 @@ export function OrderOverviewRow({ row, onOpen }: OrderOverviewRowProps) {
   return (
     <tr
       onClick={activate}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
+      onMouseEnter={() => setHighlighted(true)}
+      onMouseLeave={() => setHighlighted(false)}
+      onFocus={() => setHighlighted(true)}
+      onBlur={() => setHighlighted(false)}
       style={{
         cursor: "pointer",
-        backgroundColor: focused ? "var(--color-surface-hover)" : undefined,
+        backgroundColor: highlighted ? "var(--color-surface-hover)" : undefined,
       }}
     >
-      <td style={{ ...cellStyle, width: "40%" }}>
-        <div style={{ fontSize: "0.95rem", fontWeight: 600 }}>{row.nama_lengkap}</div>
+      <td style={cellStyle}>
+        <div
+          style={{
+            fontSize: "0.875rem",
+            fontWeight: 600,
+            color: "var(--color-text-primary)",
+          }}
+        >
+          {row.nama_lengkap}
+        </div>
         <div
           style={{
             color: "var(--color-text-secondary)",
             fontFamily: "var(--font-clinical)",
             fontSize: "0.75rem",
+            marginTop: 2,
           }}
         >
           {row.nomor_rm} · {row.no_registrasi}
@@ -69,7 +86,8 @@ export function OrderOverviewRow({ row, onOpen }: OrderOverviewRowProps) {
         style={{
           ...cellStyle,
           fontFamily: "var(--font-clinical)",
-          fontSize: "0.85rem",
+          fontSize: "0.8125rem",
+          color: "var(--color-text-secondary)",
           whiteSpace: "nowrap",
         }}
       >
@@ -77,32 +95,35 @@ export function OrderOverviewRow({ row, onOpen }: OrderOverviewRowProps) {
       </td>
 
       <td style={cellStyle}>
-        <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: "var(--space-1)" }}>
-          <span style={{ fontSize: "0.85rem" }}>{row.status_order}</span>
+        <div
+          style={{
+            alignItems: "center",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "var(--space-1)",
+          }}
+        >
+          <span style={{ fontSize: "0.8125rem", color: "var(--color-text-primary)" }}>
+            {row.status_order}
+          </span>
           {row.is_final ? (
             <span
               style={{
-                ...badgeStyle,
-                borderColor: "var(--color-flag-normal)",
-                color: "var(--color-flag-normal)",
+                ...pillStyle,
+                background: "var(--color-success-bg)",
+                color: "var(--color-success-text)",
               }}
             >
               Final
             </span>
           ) : (
-            <span style={{ ...badgeStyle, color: "var(--color-text-secondary)" }}>
-              Not finalised
-            </span>
+            <span style={neutralPillStyle}>Not finalised</span>
           )}
           {row.delivery_status !== null ? (
-            <span style={{ ...badgeStyle, color: "var(--color-text-secondary)" }}>
-              {row.delivery_status}
-            </span>
+            <span style={neutralPillStyle}>{row.delivery_status}</span>
           ) : null}
           {showRun ? (
-            <span style={{ ...badgeStyle, color: "var(--color-text-secondary)" }}>
-              Run {row.effective_run_sequence}
-            </span>
+            <span style={neutralPillStyle}>Run {row.effective_run_sequence}</span>
           ) : null}
         </div>
       </td>
@@ -114,16 +135,18 @@ export function OrderOverviewRow({ row, onOpen }: OrderOverviewRowProps) {
           <span
             style={{
               alignItems: "center",
-              color: "var(--color-flag-high)",
+              background: "var(--color-danger-bg)",
+              color: "var(--color-danger-text)",
+              borderRadius: "var(--radius-sm)",
               display: "inline-flex",
-              fontWeight: 600,
+              fontSize: "0.75rem",
+              fontWeight: 700,
               gap: "var(--space-1)",
+              padding: "2px var(--space-2)",
             }}
           >
             <span aria-hidden="true">⚠</span>
-            <span>
-              {row.abnormal_count} abnormal
-            </span>
+            <span>{row.abnormal_count} abnormal</span>
           </span>
         )}
       </td>
@@ -137,17 +160,22 @@ export function OrderOverviewRow({ row, onOpen }: OrderOverviewRowProps) {
           }}
           aria-label={`Open worklist detail for ${row.nama_lengkap}, order ${row.id_order}`}
           style={{
+            alignItems: "center",
             background: "none",
-            border: "1px solid transparent",
-            borderRadius: "4px",
-            color: "var(--color-text-secondary)",
+            border: "none",
+            borderRadius: "var(--radius-sm)",
+            color: "var(--color-text-disabled)",
             cursor: "pointer",
-            fontSize: "1rem",
+            display: "inline-flex",
+            height: 28,
+            justifyContent: "center",
             lineHeight: 1,
-            padding: "var(--space-1) var(--space-2)",
+            width: 28,
           }}
         >
-          <span aria-hidden="true">›</span>
+          <span aria-hidden="true" style={{ fontSize: "1rem" }}>
+            ›
+          </span>
         </button>
       </td>
     </tr>

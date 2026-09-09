@@ -2,16 +2,18 @@
 
 :root {
   /* Base Colors */
-  --color-background: #F5F7FA;
+  --color-background: #F8FAFC;
   --color-surface: #FFFFFF;
   --color-surface-hover: #F0F4F8;
-  --color-border: #D1D5DB;
+  --color-border: #E2E8F0;
+  --color-border-subtle: #F1F5F9;
+  --color-border-input: #CBD5E1;
 
-  /* Sidebar (M8.5) — the only design-system addition; a dark surface
-     harmonised with --color-text-primary (#111827). */
-  --color-sidebar-bg: #111827;
-  --color-sidebar-hover: #1F2937;
-  --color-sidebar-text: #E5E7EB;
+  /* Sidebar (navy rail over a single light field) */
+  --color-sidebar-bg: #0F172A;
+  --color-sidebar-hover: #1E293B;
+  --color-sidebar-text: #94A3B8;
+  --color-sidebar-active: #FFFFFF;
 
   /* Text Colors */
   --color-text-primary: #111827;
@@ -28,13 +30,34 @@
   --color-flag-low: #D97706;
   --color-flag-normal: #059669;
 
+  /* Semantic tints (pills / chips) */
+  --color-danger-bg: #FEE2E2;
+  --color-danger-text: #991B1B;
+  --color-success-bg: #D1FAE5;
+  --color-success-text: #065F46;
+  --color-neutral-bg: #F1F5F9;
+
+  /* Focus (browser default ring is suppressed on .lis-input / .lis-select) */
+  --color-focus-border: #93C5FD;
+  --color-focus-ring: rgba(37, 99, 235, 0.12);
+
+  /* Hover border for light-surface secondary / pagination buttons */
+  --color-border-strong: #94A3B8;
+
   /* Spacing (Base 4px) */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
+  --space-5: 20px;
   --space-6: 24px;
   --space-8: 32px;
+
+  /* Radius & elevation */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.04);
 
   /* Typography */
   --font-ui: "Inter", "Roboto", sans-serif;
@@ -65,9 +88,137 @@ body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: var(--space-4);
+  padding: var(--space-6);
   gap: var(--space-4);
   max-width: 1400px;
   margin: 0 auto;
   width: 100%;
+}
+
+@media (max-width: 1199px) {
+  .main-content {
+    padding: var(--space-4);
+  }
+}
+
+.lis-input:focus,
+.lis-select:focus {
+  outline: none;
+  border-color: var(--color-focus-border);
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--color-border-input);
+  border-radius: var(--radius-sm);
+}
+
+/* Action buttons — one system for worklist and detail */
+.lis-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: 36px;
+  padding: 0 var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+
+.lis-btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.lis-btn--primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-surface);
+}
+
+.lis-btn--primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+}
+
+.lis-btn--secondary {
+  background: var(--color-surface);
+  border-color: var(--color-border-input);
+  color: var(--color-text-primary);
+}
+
+.lis-btn--secondary:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
+}
+
+.lis-btn--ghost {
+  background: transparent;
+  border-color: var(--color-border);
+  color: var(--color-primary);
+}
+
+.lis-btn--ghost:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+/* Pagination */
+.lis-page-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  min-width: 32px;
+  padding: 0 var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+
+.lis-page-btn:hover:not(:disabled):not(.is-active) {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
+}
+
+.lis-page-btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.lis-page-btn.is-active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-surface);
+  cursor: default;
+}
+
+/* Sidebar brand text: fades and slides with the rail width change so it never
+   snaps in/out. The icon beside it is not transitioned and stays anchored. */
+.lis-sidebar-brand {
+  transition: opacity .15s ease, max-width .2s ease, margin-left .2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  aside,
+  .lis-btn,
+  .lis-page-btn,
+  .lis-sidebar-brand {
+    transition: none;
+  }
 }

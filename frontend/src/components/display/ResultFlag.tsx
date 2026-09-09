@@ -63,7 +63,7 @@ const knownFlags: Record<string, KnownFlagPresentation> = {
 const flagStyle = {
   alignItems: "center",
   border: "1px solid currentColor",
-  borderRadius: "4px",
+  borderRadius: "var(--radius-sm)",
   display: "inline-flex",
   gap: "var(--space-1)",
   padding: "var(--space-1) var(--space-2)",

@@ -68,7 +68,7 @@ export function TestRunSelector({
                   border: isSelected
                     ? "2px solid var(--color-primary)"
                     : "1px solid var(--color-border)",
-                  borderRadius: "4px",
+                  borderRadius: "var(--radius-md)",
                   color: "var(--color-text-primary)",
                   cursor: disabled ? "not-allowed" : "pointer",
                   display: "flex",
