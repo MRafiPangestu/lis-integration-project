@@ -112,7 +112,9 @@ export function Sidebar({
     <aside id="instrument-sidebar" aria-label="Instruments" style={{ ...asideBase, width }}>
       <div
         style={{
-          padding: "var(--space-6) var(--space-4)",
+          height: 64,
+          flexShrink: 0,
+          padding: "0 var(--space-4)",
           borderBottom: "1px solid var(--color-sidebar-hover)",
           display: "flex",
           alignItems: "center",
