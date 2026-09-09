@@ -153,7 +153,7 @@ Refactor the existing Integration Service (`alt_server.py`) to use the new datab
 
 ## Dependencies
 
-- **M1** — Database must be migrated. (pending M1.2)
+- **M1** — Database Foundation must be completed. ✅
 - **M2** — SQLAlchemy models and session config must exist. ✅
 
 ## Acceptance Criteria
@@ -489,9 +489,9 @@ Extend the Integration Service to handle concurrent connections from all 9 instr
 - [x] **M8.6** — Frontend Visual Polish (per `docs/M8.6_Investigation.md`)
   - [x] Retuned five existing design tokens (`--color-background` → `#F8FAFC`, `--color-border` → `#E2E8F0`, `--color-sidebar-bg` → `#0F172A`, `--color-sidebar-hover` → `#1E293B`, `--color-sidebar-text` → `#94A3B8`) and added ten structural tokens + five semantic tints in `index.css`, plus `.lis-input:focus` / `.custom-scrollbar` rules and a `.main-content` `--space-6` / ≤1199px `--space-4` padding split. No second palette, no new dependency. Every component colour/radius/shadow resolves through a custom property (DOM audit: zero inline `#hex` / `rgba()`)
   - [x] Sidebar: brand block (primary tile + inline activity glyph, `LIS Server` / `Marina Permata`), `INSTRUMENTS` section label, filled pill items with `--radius-md`, 8px round status-dot span with a conditional glow. Kept `id_instrument` identity + `onSelect`, `aria-current="page"`, the uppercase status word (never colour-only), skeleton/`role="alert"`/Retry behaviour, and the unchanged `matchMedia("(max-width: 900px)")` 64px icon-rail
-  - [x] Header is instrument-aware — `nama_mesin` (ellipsis-truncating `<h1>` with `title`), real `protokol · tipe_koneksi` and `Last status: {last_status_at}` (each omitted when its data is null), and it hosts the MRN search. New props are optional so `MainLayout.tsx` still compiles. No Sync button, no Port field. §6C overflow contract implemented structurally: `min-width: 0` on every flex ancestor, metadata hidden below 1100px, search flex/min-width released to `0` at ≤900px — page never scrolls horizontally
+  - [x] Header is instrument-aware — `nama_mesin` (ellipsis-truncating `<h1>` with `title`), real `protokol · tipe_koneksi` and `Last status: {last_status_at}` (each omitted when its data is null). New props are optional so `MainLayout.tsx` still compiles. No Sync button, no Port field. §6C overflow contract implemented structurally: `min-width: 0` on every flex ancestor, metadata hidden below 1100px, search flex/min-width released to `0` at ≤900px — page never scrolls horizontally. (**R2:** MRN search moved from Header to overview toolbar per §6D-E)
   - [x] Removed the intermediate `AppShell` FilterBar band (double chrome); `FilterBar` is now a chrome-free inline field with a search-icon submit button; `OverviewHeader` (title + count only) and the chrome-free `DateRangeFilter` (segmented presets + inline inputs) compose as one flat toolbar in `OrderOverviewView`; the worklist `<table>`, `colSpan` empty row and `Pagination` footer fold into a single `--radius-lg` / `--shadow-card` panel whose horizontal scroll is panel-internal only
-  - [x] Visual only: no backend, API, schema, navigation, date-serialization, instrument-identity, page-size or accessibility change. `commit()` / `invalid` in `DateRangeFilter`, the `{nomor_rm, id_visit, id_order}` drill-down, `delivery_status === null` → "Not finalised", the ⚠ + "N abnormal" + colour triad, and every `aria-*` / `scope="col"` / native `<button>` survive verbatim. `OrderDetailView`, all clinical/workflow/status components, `hooks/`, `api/`, `types/`, `dateRange.ts`, `MainLayout.tsx`, `StickyStatusBar.tsx`, `App.css` untouched; `App.tsx` changed by one line (`activeInstrument` prop)
+  - [x] Visual only: no backend, API, schema, navigation, date-serialization, instrument-identity, page-size or accessibility change. `commit()` / `invalid` in `DateRangeFilter`, the `{nomor_rm, id_visit, id_order}` drill-down, `delivery_status === null` → "Not finalised", the ⚠ + "N abnormal" + colour triad, and every `aria-*` / `scope="col"` / native `<button>` survive verbatim. `OrderDetailView`, all clinical/workflow/status components, `hooks/`, `api/`, `types/`, `MainLayout.tsx`, `StickyStatusBar.tsx`, `App.css` untouched; `dateRange.ts` expanded (§6E: sentinel range window); `App.tsx` changed by one line (`activeInstrument` prop)
   - [x] **R2 — Sidebar collapse:** sidebar opens expanded (260px) on every SPA load with no persistence (`useState(true)`, no localStorage/sessionStorage/URL); a native `<button>` toggle in the header (`aria-label` / `aria-expanded` / `aria-controls="instrument-sidebar"`) collapses it to the existing 64px in-flow rail and back. ≤900px keeps the forced rail and does not render the toggle. `aria-current` and `onSelect` identity unchanged
   - [x] **R2 — Search relocation:** Patient/RM search removed from the Header (`searchProps` prop and `FilterBar` import dropped from `Header`/`AppShell`); the existing `FilterBar` now sits in the overview toolbar above the worklist table, wired through `OrderOverviewView`'s new `searchProps`. Submit semantics, accessible name ("Search Patient / RM"), and the legacy MRN drill-down path are byte-identical; no client-side search/filter added; search is absent on the detail screen
   - [x] **R2 — `All` date preset:** presets are now `All | Today | Yesterday | Last 7 days | custom range`. `All` sends the presentation-only sentinel window `1900-01-01T00:00` / `2999-12-31T23:59` (three additive exports in `dateRange.ts`; the four existing helpers untouched) — both bounds always present so the M8.4 endpoint never 422s. `page_size=25`, server-side pagination, no full-dataset load, no backend change
@@ -514,7 +514,7 @@ Extend the Integration Service to handle concurrent connections from all 9 instr
 - The Integration Service handles multiple instruments concurrently (one thread per instrument) with fault isolation and reconnect.
 - Raw messages are persisted on every path, including unexpected failure; ACK behavior does not depend on parser success.
 - The classification mechanism exists; unclassified messages are raw-persisted only and never create clinical Test Runs or Results.
-- The concrete BC-5150 classification rule (M8.2b) remains blocked until field evidence exists.
+- The BC-5150 Background classification rule (M8.2b) is field-verified and implemented; QC/calibration/maintenance expansion remains deferred pending additional field evidence.
 - The specimen → visit/order identity rule is defined from verified instrument behavior before production multi-instrument ingestion.
 - Parser abstraction and registry select parsers from explicit configuration; unbound instruments fail loudly; ASTM deferred.
 - Order Overview API (`/api/instruments/{id}/orders`) is order-grained, instrument-scoped, date-bound, and server-paginated, with derivation in a service layer and finality / delivery / abnormal-count taken from the M7-consistent effective run.
@@ -608,6 +608,6 @@ M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6
 | M8.3 — Parser Registry | ✅ Complete |
 | M8.4 — Instrument Order Overview API | ✅ Complete |
 | M8.5 — Enterprise Dashboard Integration | ✅ Complete |
-| M8.6 — Frontend Visual Polish | In Progress (Revision 2) |
+| M8.6 — Frontend Visual Polish | ✅ Complete |
 | M9 — QA & Hardening | Not Started |
 
