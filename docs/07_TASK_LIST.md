@@ -2,16 +2,99 @@
 
 ## Implementation Roadmap
 
-9 milestones structured for safe, incremental delivery with clear checkpoints.
+Milestones structured for safe, incremental delivery with clear checkpoints.
 
 ```text
-M1 → M2 → M3 → M4 → M5 → M6 → M7 → M8 → M9
-DB    BE   Integ  Run   API  SIMRS  FE   Multi  QA
+M1 → M2 → M3 → M4 → M5 → M6 → M7 → M8 → M9 → M10
 ```
+
+`M1` database · `M2` backend · `M3` integration · `M4` test-run domain · `M5` API ·
+`M6` SIMRS · `M7` frontend · `M8` multi-instrument + dashboard ·
+`M9` deployment / security / verification · `M10` functional completion
+
+Release readiness is tracked separately from milestone status — see **Release Gates**.
+
+---
+
+## Document Authority
+
+**`07_TASK_LIST.md` is authoritative for milestone status, and for nothing else.**
+
+| Domain | Authoritative document |
+|---|---|
+| Business scope, boundaries, MVP success criteria | `01_PROJECT_BRIEF.md` |
+| Functional / non-functional requirements, actors, acceptance criteria, out-of-scope | `02_PRD.md` |
+| Architecture, deployment, security posture | `03_SYSTEM_DESIGN.md` |
+| PostgreSQL schema, constraints, finality / traceability rules | `04_DATABASE_DESIGN.md` |
+| Verification method, test cases, QA baseline, release sign-off | `06_QA_TEST_PLAN.md` |
+| Instrument identity, master data, seed eligibility | `08_MASTER_DATA.md` |
+| Physical instrument behaviour and field evidence | `09_PHYSICAL_INSTRUMENT_VALIDATION.md` |
+| Frozen milestone decisions | `M8.4_Investigation.md`, `M8.5_Investigation.md`, `M8.6_Investigation.md` |
+
+Where this document conflicts with any of the above, **the authoritative document prevails and this document must be reconciled to it.** Content from those documents may be cited here; it must not be redefined here.
+
+Documents under `docs/audits/` are **analysis records, not product requirements** and not source-of-truth specifications. An audit may prompt a reconciliation of this file; it never originates a requirement.
+
+**Milestone-scoped prohibitions are not project-wide prohibitions.** A constraint written into an investigation document binds that milestone only. In particular, `M8.6_Investigation.md` §11 prohibited polling and new dependencies **within M8.6**; that prohibition does not block M10.1 auto-refresh and does not permanently prevent frontend test tooling (M9.4).
+
+---
+
+## Milestone Status Model
+
+Five status values only.
+
+| Status | Meaning |
+|---|---|
+| **COMPLETE** | Implemented, and every acceptance criterion in that milestone's own section is evidenced (see the completion rule below) |
+| **IMPLEMENTED** | Implementation exists and is believed correct, but one or more acceptance criteria are not yet evidenced |
+| **BLOCKED** | Progress depends on an input the project does not control (physical instrument access, lab management, an external system specification) |
+| **DEFERRED** | Deliberately postponed by a cited project decision |
+| **NOT STARTED** | No work has begun |
+
+A parent milestone takes the weakest status of its children.
+
+`COMPLETE (as scoped)` is **not** a sixth status. It is `COMPLETE` plus a documented **Known Deviation** — used where a contractual requirement was omitted from that milestone's own acceptance criteria and is discharged elsewhere. It preserves history without asserting the requirement is met.
+
+---
+
+## Rule for Marking a Milestone COMPLETE
+
+A milestone may be marked **COMPLETE** only when every acceptance criterion in its own section is demonstrated by at least one evidence class below, cited alongside it.
+
+| Class | Evidence |
+|---|---|
+| **E1** | **Automated test** — a named test or test file that fails if the criterion regresses |
+| **E2** | **Reproducible structural check** — a named command or inspection any reader can re-run (`alembic heads`, `npm run build`, a schema comparison). Also covers a criterion satisfied *by construction*, provided the absent surface is explicitly identified |
+| **E3** | **Cited investigation verification** — a named, executed verification item from that milestone's investigation document |
+| **E4** | **Dated physical evidence** — a dated entry in `09_PHYSICAL_INSTRUMENT_VALIDATION.md` §18 |
+
+**E4 is required only for criteria that assert real instrument behaviour.** A criterion satisfiable in software alone is fully served by E1–E3 and must never be blocked on physical evidence.
+
+If any criterion lacks evidence, the milestone is **IMPLEMENTED**, not COMPLETE. A milestone must close its own verification obligations; it may not defer them into another milestone.
+
+**Completion Notes are historical records.** They describe the state at the time they were written and are not edited to match later numbers. Status lines, this file's Progress Summary, and the Release Gates section describe the **current** state and are kept current.
+
+---
+
+## Owner Decisions Outstanding
+
+Recorded here so they are visible rather than silently assumed. None is treated as decided.
+
+| ID | Decision | Current position |
+|---|---|---|
+| **OD-1** | RBAC model: Option A (ANALYST clinical / ADMIN system-only) vs Option B (ADMIN inherits ANALYST plus system and user management) | **Option B is the recommendation, not an owner decision.** If B is selected, M9.1b audit attribution becomes mandatory |
+| **OD-2** | M9.0 database baseline strategy | **Unresolved. No baseline approach is selected.** It is an outcome of M9.0 Phase 1 investigation, not an input to it |
+| **OD-3** | `M8.6_Investigation.md` O8 — should MRN search remain reachable from the detail screen? | The document's recommended default ("no") was applied during implementation. **Owner confirmation outstanding** |
+| **OD-4** | Target interim release posture | **Posture 1 is the recommendation, not an approved decision.** See Release Gates |
+| **OD-5** | `GET /api/results` and the `useResults` hook have no current consumer — keep and test, or retire? | **Undecided. Both are retained.** No deletion is proposed by this reconciliation |
 
 ---
 
 # M1 — Database Foundation
+
+**Status: COMPLETE (as scoped)** — evidence E2 (`alembic heads` → single head `4aff9e134f16`; 11 ORM `__tablename__` values match `04_DATABASE_DESIGN.md` §4–§10 one-to-one).
+
+> **Known Deviation — fresh-install database provisioning.** M1's acceptance criteria were satisfied against the **development database**. They never required, and this milestone never delivered, the ability to provision a database from empty: revision `b1f9dbe772fa` creates only `visits` and `test_runs` and alters three tables that must already exist, and `4a24240f8c32` is a no-op. The migration chain therefore assumes a pre-existing database. **The nature and remediation of that assumption are unresolved and are the subject of M9.0 — no baseline strategy is chosen here, and no legacy schema is asserted.** M1's shipped scope is unchanged and is not reopened.
 
 ## Objective
 
@@ -25,7 +108,8 @@ Create the final PostgreSQL schema that implements the documented data hierarchy
   - [x] Define all UNIQUE constraints (`nomor_rm`, `no_registrasi`, `kode_tes`, `kode_unit`)
   - [x] Define `UNIQUE(id_run, parameter_tes)` on `results`
   - [x] Define Partial Unique Index: `idx_unique_final_run_per_order` on `test_runs(id_order) WHERE is_final = TRUE`
-  - [ ] Define recommended indexes for query performance — deferred; the M1 migration created only the uniqueness / partial-unique indexes. Non-unique query-performance indexes are created by the milestone that needs them (see M8.4).
+  - [x] Define recommended indexes for query performance — deferred at M1; the M1 migration created only the uniqueness / partial-unique indexes. Non-unique query-performance indexes are created by the milestone that needs them (see M8.4).
+    - **Discharged by M8.4** (migration `4aff9e134f16`): four additive query-performance indexes created; the optional fifth deliberately omitted with the reasoning recorded in the migration docstring. This deferral is closed.
   - [x] Verify no `status_hasil` field exists
   - [x] Verify `id_instrument` and `id_message` are on `test_runs`, not `results`
   - [x] Verify `delivery_status` and `delivered_at` are on `test_runs`
@@ -64,6 +148,8 @@ None — this is the first milestone.
 ---
 
 # M2 — Backend Foundation
+
+**Status: COMPLETE** — evidence E2 (11 models import and match the DDL; `requirements.txt` pinned; Alembic initialised; FastAPI application starts).
 
 ## Objective
 
@@ -125,6 +211,8 @@ Establish the FastAPI project structure with SQLAlchemy 2.x models, database con
 
 # M3 — Integration Service Refactor
 
+**Status: COMPLETE (superseded by M8.1 / M8.2)** — evidence E1 (ingestion tests in `backend/tests/test_ingestion.py`). The single-instrument path delivered here was extended by M8.1 (`fc78533`, `e3a2495`) and hardened by M8.2 (`486880c`). Recorded as history; not reopened.
+
 ## Objective
 
 Refactor the existing Integration Service (`alt_server.py`) to use the new database schema. The service must create `Visit`, `Order`, `Test Run`, and `Result` records using the correct hierarchy and must never overwrite clinical data.
@@ -169,6 +257,8 @@ Refactor the existing Integration Service (`alt_server.py`) to use the new datab
 
 # M4 — Test Run Domain (Business Logic)
 
+**Status: COMPLETE** — evidence E1 (`backend/tests/api/test_test_runs_api.py`, 20 tests covering finalize / unfinalize / delivery transitions) and E2 (partial unique index `idx_unique_final_run_per_order`; no clinical-mutation service method or endpoint exists in `app/services/` or `app/api/routers/`).
+
 ## Objective
 
 Implement the core business logic for Test Run management: final run selection (with atomic swap), delivery status lifecycle, and clinical data immutability enforcement at the service layer.
@@ -204,6 +294,15 @@ Implement the core business logic for Test Run management: final run selection (
 ---
 
 # M5 — API Layer
+
+**Status: IMPLEMENTED — verification incomplete.** All five sub-milestones are implemented and remain checked below; the acceptance criterion *"All specified endpoints return correct data"* is not yet evidenced for three of them.
+
+> **Verification gap.** No automated test exercises:
+> - `GET /api/results` (M5.1)
+> - `GET /api/patients/{nomor_rm}/history` (M5.3) — this endpoint serves `02_PRD.md` FR-17 / AC-12
+> - `GET /api/instruments/status` (M5.4)
+>
+> Evidenced today (E1): `GET /api/orders/{order_id}/test-runs` and the Test Run mutation endpoints (M5.2). Closed by **M9.4** item 1. Implementation is not in question and no sub-task is unchecked on account of this gap.
 
 ## Objective
 
@@ -250,6 +349,12 @@ Build the FastAPI REST endpoints for the dashboard and external integrations.
 
 # M6 — SIMRS Integration
 
+**Status: IMPLEMENTED — verification incomplete; end-to-end delivery externally blocked.** The gateway is built and all sub-tasks remain checked below.
+
+> **Verification gap.** No automated test covers `SimrsClient`, `build_simrs_payload`, or `POST /api/test-runs/{run_id}/sync-simrs`. The delivery **state machine** is evidenced (E1, via the `delivery/start` · `delivery/success` · `delivery/fail` API tests); the **push path itself** is not. Closed by **M9.4** items 1 and 2.
+>
+> **External blocker.** Real end-to-end delivery to SIMRS has never been exercised: `SIMRS_BASE_URL` is unset, so `SimrsClient.send()` returns a configuration error and sends nothing. The missing input is the **SIMRS Integration Specification** (`01_PROJECT_BRIEF.md` §7 and `02_PRD.md` FR-17 both defer endpoint, payload and authentication to that specification). This is tracked as release gate **RG-2** — a gate, not a new milestone; the code already exists.
+
 ## Objective
 
 Implement the SIMRS push gateway: send final Test Run results to the SIMRS endpoint and track delivery status.
@@ -286,6 +391,12 @@ Implement the SIMRS push gateway: send final Test Run results to the SIMRS endpo
 ---
 
 # M7 — Frontend
+
+**Status: COMPLETE (as scoped)** — evidence E3 (the M8.5 §17 Tier-1 and M8.6 §13 V1–V27 manual verification runs against `lis_marina_permata_dev`) and E2 (`npm run build`).
+
+> **Known Deviation — FR-07 / AC-09 automatic dashboard update.** `02_PRD.md` FR-07 requires the dashboard to update automatically after new data is processed, without a manual page refresh, and AC-09 states it as an acceptance criterion; `06_QA_TEST_PLAN.md` §18 carries it in the QA baseline. **M7's own acceptance criteria omitted it**, so the milestone closed without it. It is a functional requirement, not hardening. M7's shipped scope is unchanged and is not reopened; the requirement is discharged by **M10.1**.
+
+> **Verification note.** M7 behaviours are evidenced by manual checklists (E3), not by automated tests. Frontend test tooling and automated component tests are **M9.4** item 5. This does not change M7's status: E3 is a valid evidence class.
 
 ## Objective
 
@@ -352,6 +463,20 @@ Build the React dashboard per the Design System specification, implementing all 
 
 # M8 — Multi-Instrument Support & Enterprise Dashboard
 
+**Status: COMPLETE** (M8.1 · M8.2 · M8.2b · M8.3 · M8.4 · M8.5 · M8.6 all COMPLETE). Two items were deliberately deferred and one is blocked on field evidence; each is recorded against its own sub-milestone below and none of them prevents M8 from being complete as scoped.
+
+| Sub-milestone | Status | Open item carried forward |
+|---|---|---|
+| M8.1 | COMPLETE | Rollout to instruments 2–9 is release gate **RG-1**, not M8.1 debt |
+| M8.2 | COMPLETE | Specimen → visit/order identity rule **DEFERRED** (cited in-milestone) |
+| M8.2b | COMPLETE | QC / calibration / maintenance extension **BLOCKED** on field evidence → **M9.3b** |
+| M8.3 | COMPLETE | ASTM **DEFERRED** (cited in-milestone) |
+| M8.4 | COMPLETE | Investigation decision D4 (`total_runs`) consciously not implemented |
+| M8.5 | COMPLETE | Tier-2 frontend tests deferred under the investigation's own permitted fallback → **M9.4** |
+| M8.6 | COMPLETE | Decision F3 (search availability) applied; open question O8 unconfirmed by owner (**OD-3**) |
+
+> **M8 frozen decisions are not reopened by this reconciliation.** `M8.4_Investigation.md`, `M8.5_Investigation.md` and `M8.6_Investigation.md` remain binding within their scopes.
+
 ## Objective
 
 Extend the Integration Service to handle concurrent connections from all 9 instruments, ensure clinical ingestion correctness, and provide an enterprise Patient Overview dashboard.
@@ -413,6 +538,7 @@ Extend the Integration Service to handle concurrent connections from all 9 instr
   - Specimen / visit identity:
     - [ ] Investigate and define the specimen → visit/order identity rule for messages without a patient identifier; preserve legitimate repeat-run semantics; resolve the collision risk before production multi-instrument ingestion; base the rule on verified instrument behavior and clinical requirements (no date-scoped or arbitrary replacement key)
       - **Not changed in M8.2** — remains blocked pending field evidence and clinical requirements investigation
+      - **Status: DEFERRED.** Carried by this milestone's own acceptance criterion ("…before production multi-instrument ingestion") and by release gate **RG-3**. Evidence dependencies are recorded in `09_PHYSICAL_INSTRUMENT_VALIDATION.md` §10 (T-BC-A, T-BC-O, T-ID-02, question Q4). Ingestion still derives `no_registrasi` as `identity_prefix + OBR-3`; no replacement key is proposed here.
   - Ingestion-critical tests:
     - [x] Parser behavior
       - Implemented in 486880c: 28 new ingestion tests covering parser paths and exceptions
@@ -438,6 +564,7 @@ Extend the Integration Service to handle concurrent connections from all 9 instr
     - Verified in 38a40fb: only OBR-3 "Background" is encoded; no QC/calibration/maintenance/Take Mode inference; fail-closed -> UNCLASSIFIED
   - [ ] Extend beyond Background if additional field evidence emerges for QC, calibration, maintenance, control
     - Not completed: QC/calibration/maintenance classification remain UNCLASSIFIED pending further field-verified evidence
+    - **Status: BLOCKED** on physical evidence (`09_PHYSICAL_INSTRUMENT_VALIDATION.md` §9.2 / §18.1: QC, calibration, maintenance and control all have **zero captures**; T-BC-K ×2 on different days plus L, M, N, H are required, gated by lab-management question Q1). Tracked forward as **M9.3b**. No speculative QC rule is proposed.
 
 - [x] **M8.3** — Protocol Abstraction & Parser Registry
   - [x] Define a common parser interface/adapter for message ingestion (keep minimal)
@@ -456,6 +583,8 @@ Extend the Integration Service to handle concurrent connections from all 9 instr
 **Completion Notes:**
 - **M8.3** (parser registry): Parser interface moved to `parsers` package. Static exact-match registry with no fallback/inference/dynamic import/DB dependency. `ParserNotRegisteredError` replaces `InstrumentConfigError` for unknown parser keys. BC-5150 parser pre-registered. Startup validation retained. 107 backend tests pass.
 
+**Current status — M8.3: COMPLETE**, evidence E1 (`backend/tests/test_parser_registry.py`). **ASTM support is DEFERRED** by this milestone's own decision — a deliberate project choice pending field-verified evidence, not a failure and not an external block. A second protocol family is introduced only when a real corpus exists for it (`09_PHYSICAL_INSTRUMENT_VALIDATION.md` §11.4, §16).
+
 - [x] **M8.4** — Instrument Order Overview API
   - [x] Row grain frozen as **one Order** (not Patient/Visit/TestRun); an order is included when the requested instrument has ≥ 1 TestRun for it (EXISTS semi-join, no fan-out); patient identity is displayed but the view stays order-grained
   - [x] Effective run = M7's finality-first selection restricted to the requested instrument: `ORDER BY is_final DESC, run_sequence DESC, id_run DESC` → first row (no `waktu_run` ordering key; `run_sequence` is NOT NULL / MAX+1 / UNIQUE per order, `id_run DESC` is the defensive tie-breaker)
@@ -472,6 +601,8 @@ Extend the Integration Service to handle concurrent connections from all 9 instr
 **Completion Notes:**
 - **M8.4** (instrument order overview): order-grained, instrument-scoped operational worklist consistent with M7 detail semantics. Service-layer LATERAL query, no row fan-out, accurate `total`. 27 PostgreSQL tests (`tests/test_order_overview.py`). 134 backend tests pass. Ingestion / classification / identity / ACK / parser registry / TestRun workflow unchanged.
 
+**Current status — M8.4: COMPLETE**, evidence E1 (`backend/tests/test_order_overview.py`, 27 tests) and E3 (`M8.4_Investigation.md` frozen decisions §3–§12 verified in `app/services/overview_service.py`). Investigation decision **D4 (`total_runs`) was consciously not implemented** — it was a proposed default rather than a frozen decision, and M8.5 decision D5 ("Run N" shown when `effective_run_sequence > 1`) covers the operator need. This is a deliberate choice, not outstanding debt.
+
 - [x] **M8.5** — Enterprise Dashboard Integration (per `docs/M8.5_Investigation.md`)
   - [x] Permanent left `Sidebar` (`components/layout/Sidebar.tsx`): 240px, all instruments from `GET /api/instruments/status` (`id_instrument` as identity — never array index, never a hardcoded PoC id), status dot + text reusing the `CONNECTED / RECONNECTING / DISCONNECTED / UNKNOWN` vocabulary, `aria-current="page"` + accent on the active item, no polling, manual `refetch` retry, 64px icon rail below ~900px
   - [x] `StickyStatusBar` retired from the shell (superseded by the sidebar); the file is kept untouched for reversibility. New `AppShell` (`components/layout/AppShell.tsx`) replaces `MainLayout`'s two-column role; `FilterBar` relocated into the shell as the always-available MRN lookup that drives the search→detail path
@@ -485,6 +616,10 @@ Extend the Integration Service to handle concurrent connections from all 9 instr
 
 **Completion Notes:**
 - **M8.5** (enterprise dashboard): state-based two-view shell (Sidebar + Overview/Detail), M8.4 order-overview worklist, M7 detail extracted to `OrderDetailView` and reused by both the worklist drill-down and the legacy MRN search. `StickyStatusBar` retired from the shell (file retained). Four additive sidebar/overview frontend modules + three CSS tokens; no backend, migration, M8.3/M8.4, or clinical-component change. No React Router, no new global state, no polling, no frontend test framework.
+
+**Current status — M8.5: COMPLETE**, evidence E3 (the §17 Tier-1 manual checklist executed against `lis_marina_permata_dev`) and E2 (`npm run build`; `npm run lint` unchanged from the `468d6b7` baseline).
+- **Tier-2 frontend testing was legitimately DEFERRED**, not skipped: `M8.5_Investigation.md` §20 D4 offered two permitted paths and explicitly allowed "accept Tier 1 + the manual checklist and move all of §17 to M9.4". That fallback was taken. The 16 §17 scenarios are carried by **M9.4** item 5.
+- **`MainLayout.tsx` and `StickyStatusBar.tsx` are intentionally retained.** Decision D1 froze "retire it from the shell, **keep the file**", and `M8.6_Investigation.md` §10 lists both under "Must NOT change" while §11 forbids deleting retained files. **They are not dead code and must not be deleted.**
 
 - [x] **M8.6** — Frontend Visual Polish (per `docs/M8.6_Investigation.md`)
   - [x] Retuned five existing design tokens (`--color-background` → `#F8FAFC`, `--color-border` → `#E2E8F0`, `--color-sidebar-bg` → `#0F172A`, `--color-sidebar-hover` → `#1E293B`, `--color-sidebar-text` → `#94A3B8`) and added ten structural tokens + five semantic tints in `index.css`, plus `.lis-input:focus` / `.custom-scrollbar` rules and a `.main-content` `--space-6` / ≤1199px `--space-4` padding split. No second palette, no new dependency. Every component colour/radius/shadow resolves through a custom property (DOM audit: zero inline `#hex` / `rgba()`)
@@ -501,6 +636,12 @@ Extend the Integration Service to handle concurrent connections from all 9 instr
 
 **Completion Notes:**
 - **M8.6** (frontend visual polish): **Revision 2 complete and released.** Commits: `15db322` (feat/complete M8.6 revision 2, 27 files) + `7b19a48` (fix/sidebar header junction). Revision 1 restyled the M8.5 dashboard toward `poc/mindray` (navy sidebar, brand block, filled pills, instrument-aware header, flat toolbar, single panel). Browser review found five defects: header metadata overlap, search in wrong region, no sidebar width control, pagination styling, unstyled buttons. Revision 2 specified corrections: sidebar expanded on startup with manual collapse toggle to 64px rail; Patient/RM search relocated to overview toolbar (FilterBar props/submit preserved); `All` date preset mapped via sentinel range `1900-01-01`/`2999-12-31` (no backend change, `page_size=25`, server-side); numbered server-side pagination (centred-window, five-button frame); `.lis-btn`/`.lis-page-btn` button system (detail + workflow, presentation-only, zero handler/API/clinical change). Independent Opus audit: PASS. Build clean, lint identical to baseline (13 errors, zero new), backend 134 passed, no protected path modified. Post-release refinement `7b19a48` aligned Sidebar/Header 64px junction.
+
+**Current status — M8.6: COMPLETE**, evidence E3 (§13 V1–V27 executed) and E2 (`npm run build`; lint at baseline). Frozen decisions **F1–F7** stand as recorded in `M8.6_Investigation.md` §15 and are not reopened.
+- **F3 changed behaviour, not only presentation.** Relocating the MRN search to the overview toolbar means the search is **no longer available on the detail screen** or during the three instrument-level states. Every functional property of the search→detail path was preserved; the availability surface narrowed. Recorded here so it is not mistaken for a regression.
+- **Open question O8** (should MRN search remain reachable from the detail screen?) was answered by the document's recommended default and applied. **Owner confirmation is outstanding — see OD-3.**
+- **M8.6 §11's prohibitions on polling and on new dependencies were scoped to M8.6.** They do not bind **M10.1** (auto-refresh) or **M9.4** (frontend test tooling).
+- **`MainLayout.tsx` and `StickyStatusBar.tsx` remain intentionally retained** under §10 "Must NOT change" and §11's ban on deleting retained files.
 
 ## Dependencies
 
@@ -521,93 +662,298 @@ Extend the Integration Service to handle concurrent connections from all 9 instr
 - Dashboard provides instrument-based navigation and drills down into reused M7 clinical components without rewriting them.
 
 ---
-# M9 — QA & Hardening
+
+# M9 — Deployment, Security & Verification Readiness
+
+*Retitled from "QA & Hardening". The former title grouped a functional requirement (auto-refresh) with hardening work, which is how FR-07 went unnoticed; that item now lives in M10.1. Numbering of M9.1–M9.5 is preserved because `09_PHYSICAL_INSTRUMENT_VALIDATION.md` §15 maps M9 items by number.*
 
 ## Objective
 
-Add authentication, message deduplication, QC filtering, test coverage, and production hardening.
+Make the system deployable, access-controlled, attributable and verified. Physical-evidence-dependent classification and deduplication work is tracked here but is blocked outside the project's control.
 
 ## Tasks
 
-- [ ] **M9.1** — Authentication / RBAC
-  - [ ] Implement authentication mechanism (JWT or equivalent)
-  - [ ] Define roles: Analyst, Administrator
-  - [ ] Protect API endpoints by role
-  - [ ] Protect Final Run and SIMRS sync actions
+### M9.0 — Deployment & Migration Foundation — **NOT STARTED**
 
-- [ ] **M9.2** — Message Deduplication Refinement
-  - [ ] Per-instrument deduplication refinement (foundational exact-retransmission handling stays in M8.2)
-  - [ ] Retransmissions with changed timestamps
-  - [ ] Supplementary keys such as HL7 Control ID where justified
+The migration chain is not self-sufficient from an empty database (see M1's Known Deviation), and no test exercises Alembic — both API test modules build their schema with `Base.metadata.create_all()`, so migrations and the ORM are two unverified-equivalent schema sources.
 
-- [ ] **M9.3** — QC / Calibration Filtering Refinement
-  - [ ] Expanded per-instrument QC / calibration rules from field-verified instrument-specific semantics
-  - [ ] Filter QC / calibration data from patient results
-  - [ ] Validate that the conservative fail-closed mechanism does not incorrectly quarantine genuine patient results
+- [ ] **Phase 1 — Investigation.** Establish, from authoritative evidence, what the pre-M1 database actually contained and what `4a24240f8c32` ("Legacy baseline", a no-op) was intended to mark. Determine which remediation is correct.
+  - [ ] Confirm empirically, on a scratch database, where `alembic upgrade head` first fails from empty
+  - [ ] Establish the legacy schema from evidence — **do not reconstruct or infer it**
+  - [ ] Evaluate remediation options and record the choice with its reasoning
+  - **No baseline strategy is selected in this task list (OD-2).** Choosing one is Phase 1's output, not its input.
+- [ ] **Phase 2 — Implementation.** Implement the strategy selected in Phase 1.
+- [ ] Add migration verification to the test suite: provision a scratch database through the migration chain and assert the result matches `Base.metadata`
+- [ ] Add a provisioning section to `04_DATABASE_DESIGN.md` documenting the fresh-install path and the legacy-upgrade path
 
-- [ ] **M9.4** — Test suite
-  - [ ] Backend unit tests (parser, services, business logic)
-  - [ ] API integration tests
-  - [ ] Database constraint tests
-  - [ ] Frontend component tests
-  - [ ] End-to-end test scenarios from QA Test Plan
+**Dependencies:** none. **Release impact:** gate in every posture. **External blockers:** none.
 
-- [ ] **M9.5** — Production hardening
-  - [ ] Structured logging (replace print statements)
-  - [ ] Connection pooling
-  - [ ] CORS restriction for production
-  - [ ] Error handling standardization
-  - [ ] Input validation
+### M9.1a — Security Foundation — **NOT STARTED**
 
-- [ ] **M9.6** — UI Auto-Refresh
-  - [ ] Implement auto-refresh / polling mechanism for dashboard
-  - [ ] Ensure race condition safety during mutations
+Every API endpoint is currently unauthenticated, including the Final Run and SIMRS actions. Basis: `02_PRD.md` NFR-09 and AC-12; `03_SYSTEM_DESIGN.md` §11; `06_QA_TEST_PLAN.md` TC-SEC-01, TC-SEC-03, TC-HIST-03.
+
+- [ ] Authentication mechanism (JWT or equivalent), with explicit and configurable token lifetime
+- [ ] Password storage using a modern hashing scheme; never plaintext
+- [ ] Define roles and represent them explicitly rather than as scattered string checks
+- [ ] Protect API endpoints by role; deny by default
+- [ ] Protect Final Run, unfinalize, delivery transitions and SIMRS sync from anonymous callers
+- [ ] Restrict CORS for production *(moved here from the former M9.5 list — CORS configuration is inseparable from the authentication model)*
+- [ ] Login / logout and authenticated-client integration in the frontend
+- [ ] Tests: login success and failure, missing / invalid / expired token, wrong role, authorised role, and a check that no endpoint outside an explicit public allowlist is reachable anonymously
+
+> **RBAC direction.** Option B (ADMIN inherits all ANALYST permissions plus system and user management) is the **recommendation** recorded under **OD-1**. It is **not an owner decision** and must not be implemented as settled until confirmed. `02_PRD.md` §3 defines one human actor (Laboratory Analyst); `03_SYSTEM_DESIGN.md` §11.2 presents its two-role tree explicitly as an example ("Contoh:") and states that actual rights are adjustable.
+
+**Dependencies:** M9.0 (its `users` migration should land on a reconciled chain). **Release impact:** gate in every posture.
+
+### M9.1b — Audit Attribution — **NOT STARTED**
+
+`02_PRD.md` NFR-08 requires workflow audit information to include the identity of the user who performed the activity; `03_SYSTEM_DESIGN.md` §12 lists final-run selection among the activities to be traceable. No user identity is recorded on any workflow mutation today.
+
+- [ ] Record the acting user on: finalize, unfinalize, delivery state transitions, SIMRS sync
+- [ ] Schema change to carry the attribution, with its migration
+- [ ] Tests asserting attribution is recorded and is not spoofable by the caller
+
+> **Especially required if OD-1 resolves to Option B**, since role would then no longer distinguish who performed a clinical workflow action; attribution becomes the only remaining control satisfying NFR-08.
+
+**Dependencies:** M9.1a. **Release impact:** gate in every posture.
+
+### M9.2 — Message Deduplication Refinement — **BLOCKED**
+
+- [ ] Per-instrument deduplication refinement (foundational exact-retransmission handling stays in M8.2)
+- [ ] Retransmissions with changed timestamps
+- [ ] Supplementary keys such as HL7 Control ID where justified
+
+**Blocker (physical evidence, `09_PHYSICAL_INSTRUMENT_VALIDATION.md` §8):** T-BC-B (genuine repeat run), T-BC-D, E, F, I, R, and T-ID-02. §8.5 records that the existing M8.2 guard **has never been exercised in the field** — under the fail-closed policy a BC-5150 message returns before the guard is reached. §8.5 also states that **no deduplication algorithm should be chosen** before those tests complete; none is proposed here.
+
+> **Conditional release gate.** **Not** a gate for Posture 1 — no clinical rows are created, so there is nothing to duplicate. **Required before Posture 2** (`PATIENT_RESULT` enablement), where the guard becomes reachable and a resend with a changed OBR-7 would create a duplicate clinical run.
+
+### M9.3a — Fail-Closed Classification, Validated — **COMPLETE**
+
+Discharges the third bullet of the original M9.3 scope: *validate that the conservative fail-closed mechanism does not incorrectly quarantine genuine patient results.* The validation was performed and recorded; its outcome is that under `bc5150_field_verified` every non-Background BC-5150 message is `UNCLASSIFIED` and creates no clinical rows — accepted as safe-but-inert pending a positive rule.
+
+- [x] Fail-closed BC-5150 behaviour: OBR-3 `Background` → `NON_PATIENT`; every other parseable message → `UNCLASSIFIED`, creating no Patient / Visit / Order / TestRun / Result
+- [x] Quarantine behaviour validated and its consequences recorded
+- [x] Behaviour pinned against regression
+
+> **Provenance — do not misattribute.** The production behaviour was implemented in **`38a40fb` (M8.2b)**. Commit **`28ad9b3` changed no production code**: it added regression tests (`backend/tests/test_ingestion.py`) and field-evidence records (`09_PHYSICAL_INSTRUMENT_VALIDATION.md`) only. `28ad9b3` supplied **verification and evidence**, not behaviour.
+
+**Evidence:** E1 — 28 BC-5150 tests in `backend/tests/test_ingestion.py` §K, including assertions that unlabelled and patient-like messages create no clinical rows. E4 — `09_PHYSICAL_INSTRUMENT_VALIDATION.md` §18 (T-BC-J), §5.7 (27 consistent historical Background captures plus 2 live session-1 captures, no counter-example), §9.4–§9.5 (the quarantine consequence, and positive `PATIENT_RESULT` recorded as NOT APPROVED).
+
+### M9.3b — QC / Calibration Filtering — **BLOCKED**
+
+- [ ] Expanded per-instrument QC / calibration rules from field-verified instrument-specific semantics
+- [ ] Filter QC / calibration data from patient results
+
+**Blocker (physical evidence, `09_PHYSICAL_INSTRUMENT_VALIDATION.md` §9):** QC, calibration, maintenance and control material all have **zero captures**. Required: T-BC-K twice on different days, plus L, M, N and H; scheduling depends on lab-management question Q1. §9.5 records positive patient classification as **NOT APPROVED**, with one candidate falsified and the rest unresolved. **No QC or positive-patient rule is proposed here.**
+
+> **Conditional release gate.** **Not** a gate for Posture 1 — nothing is classified `PATIENT_RESULT`, so QC cannot contaminate a patient record. **Required before Posture 2**, where a misclassified QC run would write control-material values into a patient record.
+
+### M9.4 — QA Debt Closure — **NOT STARTED**
+
+A **finite, closed backlog** of verification debt that already exists. It is **not** a destination for future test obligations: under the completion rule above, each milestone closes its own verification. Nothing may be added to this list.
+
+- [ ] **1. API tests** for the four untested endpoints: `GET /api/results`; `GET /api/patients/{nomor_rm}/history` (FR-17 / AC-12); `GET /api/instruments/status`; `POST /api/test-runs/{run_id}/sync-simrs` (FR-16 / AC-11)
+  - *Three of these belong to M5's verification gap; `sync-simrs` belongs to M6's. `GET /api/results` is subject to **OD-5** — settle whether it is kept before writing tests for it. It is retained either way; nothing is deleted by this reconciliation.*
+- [ ] **2. SIMRS module unit tests** — `SimrsClient` and `build_simrs_payload`, with the outbound call mocked
+- [ ] **3. `backend/tests/conftest.py`** — none exists; each test module currently builds its own engine and fixtures
+- [ ] **4. Dedicated database-constraint suite** — constraint behaviour is presently asserted only indirectly, via `IntegrityError` paths inside the ingestion and Test Run API tests
+- [ ] **5. Frontend test tooling plus the `M8.5_Investigation.md` §17 Tier-2 scenarios 1–16** *(M8.6's ban on new dependencies was milestone-scoped and does not apply)*
+- [ ] **6. Redacted field-corpus regression fixtures** (`09_PHYSICAL_INSTRUMENT_VALIDATION.md` §12.4, §16 step 4) — session-1 raw frames currently exist only in the development database. Redaction is required before any capture becomes a committed fixture.
+
+**Dependencies:** M9.1a — authentication changes the setup of every API test, so writing them first would mean writing them twice. **Release impact:** gate in every posture.
+
+### M9.5 — Production Hardening — **NOT STARTED**
+
+- [ ] Structured logging (replace the remaining `print` statements in `app/integration/client.py` and `app/integration/instruments.py`)
+- [ ] Error handling standardisation
+- [ ] Input validation
+- [ ] Connection pooling and related operational hardening
+
+*CORS restriction moved to M9.1a.*
+
+> **Partially blocked.** ACK-timeout and reconnect-interval tuning depends on `09_PHYSICAL_INSTRUMENT_VALIDATION.md` T-BC-T, which itself depends on lab-management question Q3 (whether an ACK may be withheld on a production instrument). The current 5-second connect and reconnect constants remain unvalidated. The rest of this milestone is unblocked.
+
+### M9.6 — **VACATED**
+
+Formerly "UI Auto-Refresh". **Automatic dashboard update is not hardening** — it is `02_PRD.md` FR-07 with acceptance criterion AC-09, and it appears in the `06_QA_TEST_PLAN.md` §18 baseline. Classifying it under "QA & Hardening" is why it was not recognised as an unmet contractual requirement when M7 closed. The requirement moves to **M10.1** under Functional Completion. The number is retained here, vacated, so existing references to "M9.6" resolve.
 
 ## Dependencies
 
-- **M1–M8** — All core features must be implemented.
+- **M1–M8** — core features implemented.
+- **M9.0** precedes M9.1a. **M9.1a** precedes M9.1b and M9.4, and precedes **M9.5** for consistency of the hardened surface (soft — M9.5 is otherwise unblocked).
+- **M9.2**, **M9.3b** are independent of the above and blocked on physical evidence.
 
 ## Acceptance Criteria
 
-- QA Test Plan scenarios (TC-*) pass.
-- Authentication prevents unauthorized access.
-- Duplicate messages do not create duplicate clinical records.
-- QC data does not appear as patient results.
-- Test coverage exists for critical paths.
-- No print-based logging in production code.
+- A database can be provisioned reproducibly, and the migration chain is exercised by an automated check (M9.0).
+- Authentication prevents unauthorised access; no data endpoint is reachable anonymously (M9.1a; `06_QA_TEST_PLAN.md` TC-SEC-01, TC-SEC-03, TC-HIST-03).
+- Workflow mutations record the acting user (M9.1b; `02_PRD.md` NFR-08).
+- The four untested endpoints and the SIMRS module have automated coverage (M9.4).
+- No print-based logging in production code (M9.5).
+- Deduplication and QC criteria are **conditional on release posture** — see Release Gates. They are not acceptance criteria for Posture 1.
+
+---
+
+# M10 — Functional Completion
+
+## Objective
+
+Deliver the contractual functional requirement that remained after M8, and close M7's omitted acceptance criterion.
+
+## Tasks
+
+### M10.1 — Automatic Dashboard Update — **NOT STARTED**
+
+Discharges `02_PRD.md` **FR-07** and **AC-09**, and closes the Known Deviation recorded against M7. Also carried in the `06_QA_TEST_PLAN.md` §18 QA baseline.
+
+- [ ] Update the worklist automatically after new data is processed, with no manual page refresh
+- [ ] Guarantee race safety with in-flight workflow mutations — the M7 per-run mutation lock in `frontend/src/hooks/useMutations.ts` must not be bypassed or duplicated
+- [ ] Preserve existing pagination and date-range semantics; refresh must not silently move the operator's page or window
+- [ ] Automated test coverage plus a manual verification pass
+
+> **Implementation is not constrained to polling.** Polling or another suitable mechanism may be used. `M8.6_Investigation.md` §11's prohibition on `setInterval` / `setTimeout` and on new dependencies was **scoped to M8.6** and does not apply to this milestone.
+
+**Development dependencies:** none — the M8.4 overview API already supplies the required data, and no backend change is anticipated.
+**Release dependency:** if the consumed endpoint is protected by then, the refresh path must handle authentication and token expiry (M9.1a).
+**Release impact:** gate in every posture.
+
+## Dependencies
+
+- **M8.4** — the overview API this consumes already exists.
+- **M9.1a** — release-level dependency only (authenticated refresh), not a development blocker.
+
+## Acceptance Criteria
+
+- A newly processed result appears in the dashboard without a manual page refresh (AC-09).
+- An automatic refresh cannot corrupt, cancel or race an active finalize / unfinalize / SIMRS-sync mutation.
+- Evidence: E1 automated test plus E3 manual verification.
+
+---
+
+# Release Gates
+
+Release gates are conditions on **shipping**, not units of work. A gate blocked by something outside the project is recorded with its external owner and is **never** restated as an engineering milestone.
+
+**Which gates apply depends on the release posture.** Deduplication and QC classification are not gates for a fail-closed pilot, and *are* gates once clinical results are enabled. Neither is universally non-gating.
+
+## Posture 1 — Fail-closed pilot
+
+BC-5150 ingests, raw-persists, ACKs, and classifies Background as `NON_PATIENT`; everything else is `UNCLASSIFIED`. **No Patient / Visit / Order / TestRun / Result rows are created for the BC-5150.**
+
+This posture demonstrates transport, MLLP framing, `MSA|AA` acknowledgement, the raw-message audit trail, Background classification, and the dashboard shell. **It must not be described as a clinical end-to-end workflow**, and the worklist will contain no BC-5150 clinical data.
+
+| Gate | Required |
+|---|---|
+| M9.0 Deployment & Migration Foundation | **Yes** |
+| M9.1a Security Foundation | **Yes** |
+| M9.1b Audit Attribution | **Yes** |
+| M9.4 QA Debt Closure | **Yes** |
+| M9.5 Production Hardening | **Yes** |
+| M10.1 Automatic Dashboard Update | **Yes** |
+| M9.2 dedup · M9.3b QC · specimen identity | **No** — nothing clinical is persisted |
+| RG-1 second instrument · RG-2 SIMRS E2E | **No** |
+
+*Recommended interim target (**OD-4**) — a recommendation, not an approved decision.*
+
+## Posture 2 — Clinical enablement for BC-5150
+
+`PATIENT_RESULT` is enabled and clinical rows are created from instrument data.
+
+| Gate | Required |
+|---|---|
+| All Posture 1 gates | **Yes** |
+| M9.2 Deduplication Refinement | **Yes** — the M8.2 guard becomes reachable; a resend with a changed OBR-7 would create a duplicate clinical run |
+| M9.3b QC / Calibration Filtering | **Yes** — a misclassified QC run would write control-material values into a patient record |
+| Specimen → visit/order identity decision (M8.2 deferral) | **Yes** — if the specimen counter recycles, two patients collapse into one Visit / Order |
+| RG-3 `PATIENT_RESULT` enablement | **Yes** — the composite of the three above |
+| RG-1 second instrument · RG-2 SIMRS E2E | **No** |
+
+**`PATIENT_RESULT` must not be enabled unless all three clear.** `09_PHYSICAL_INSTRUMENT_VALIDATION.md` §9.6 states that M9.3 and the §10 identity question must **both** clear — neither alone is sufficient.
+
+## Posture 3 — Full MVP sign-off
+
+| Gate | Required |
+|---|---|
+| All Posture 2 gates | **Yes** |
+| RG-1 Second instrument / multi-instrument isolation | **Yes** — externally blocked |
+| RG-2 SIMRS end-to-end delivery | **Yes** — externally blocked |
+| Historical Result API verified (FR-17 / AC-12) | **Yes** — requires M9.1a authorisation plus M9.4 item 1 |
+
+Basis: `06_QA_TEST_PLAN.md` §21 sign-off criteria.
+
+> **Posture 3 is not reachable by engineering effort alone.** Sign-off items §21.6 (multi-instrument isolation) and §21.7 (SIMRS delivery) depend on a second physical instrument and on the SIMRS Integration Specification respectively. Both should be raised with their owners now rather than discovered at sign-off.
+
+## Release Gate Register
+
+| ID | Gate | Requirement basis | Engineering work | External blocker | External owner |
+|---|---|---|---|---|---|
+| **RG-1** | Second instrument / multi-instrument isolation | `02_PRD.md` AC-01, AC-13; `06_QA_TEST_PLAN.md` §21.6 | **No new milestone.** Configuration entry, a parser for that instrument, and a field session | Physical access to a second instrument; `09_PHYSICAL_INSTRUMENT_VALIDATION.md` question Q5 (which instruments are in routine clinical use) | Lab management |
+| **RG-2** | SIMRS end-to-end delivery | `02_PRD.md` AC-11, FR-16; `06_QA_TEST_PLAN.md` §21.7 | **None — the code already exists** (M6) | SIMRS Integration Specification: endpoint, payload contract and authentication are deferred to it by `01_PROJECT_BRIEF.md` §7 and `02_PRD.md` FR-17 | Project owner / hospital IT (SIMRS vendor) |
+| **RG-3** | `PATIENT_RESULT` enablement for BC-5150 | `02_PRD.md` FR-04; `09_PHYSICAL_INSTRUMENT_VALIDATION.md` §9.5, §9.6 | M9.2 **and** M9.3b **and** the specimen-identity decision | Physical evidence: T-BC-K ×2, T-BC-B, T-ID-02; lab-management questions Q1 and Q4 | Project owner, on field evidence |
+
+**RG-1, RG-2 and RG-3 are gates, not milestones.** They are deliberately not numbered as M10.2 / M10.3: modelling an external dependency as an engineering task would imply work that does not exist.
 
 ---
 
 # Milestone Dependency Graph
 
+Development dependencies only. Release gates are separate and are listed above.
+
 ```text
-M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6
-                                │      │
-                                ▼      ▼
-                               M7 ◄────┘
-                                │
-                               M8
-                                │
-                               M9
+M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6 ──► M7 ──► M8
+                                                  │
+   ┌──────────────────┬───────────────────────────┴──────────────────┐
+   ▼                  ▼                                              ▼
+ M9.0              M9.2   [BLOCKED — physical evidence]           M10.1
+   │               M9.3a  [COMPLETE — behaviour from M8.2b]      FR-07 / AC-09
+   ▼               M9.3b  [BLOCKED — physical evidence]          closes M7
+ M9.1a
+   │
+   ├──► M9.1b
+   ├──► M9.4
+   └──► M9.5
+
+Sequential:  M9.0 → M9.1a → { M9.1b, M9.4 }.
+Independent: M9.0, M9.2, M9.3b and M10.1 do not depend on one another.
+M9.5 depends on M9.1a only for consistency of the hardened surface; it is
+     otherwise unblocked except for its ACK / reconnect timing constants.
+M10.1 needs M9.1a at release time (authenticated refresh), not to start.
 ```
 
 # Progress Summary
 
-| Milestone | Status |
-|---|---|
-| M1 — Database Foundation | ✅ Complete |
-| M2 — Backend Foundation | ✅ Complete |
-| M3 — Integration Service | ✅ Complete |
-| M4 — Test Run Domain | ✅ Complete |
-| M5 — API | 🟢 Complete |
-| M6 — SIMRS | 🟢 Complete |
-| M7 — Frontend | 🟢 Complete |
-| M8.1 — Instrument Config & Supervisor | ✅ Complete |
-| M8.2 — Ingestion Hardening & Classification | ✅ Complete |
-| M8.2b — BC-5150 Background Rule | ✅ Complete (field-verified) |
-| M8.3 — Parser Registry | ✅ Complete |
-| M8.4 — Instrument Order Overview API | ✅ Complete |
-| M8.5 — Enterprise Dashboard Integration | ✅ Complete |
-| M8.6 — Frontend Visual Polish | ✅ Complete |
-| M9 — QA & Hardening | Not Started |
+Status vocabulary and the completion rule are defined at the top of this document.
+
+| Milestone | Status | Note |
+|---|---|---|
+| M1 — Database Foundation | ✅ COMPLETE (as scoped) | Known Deviation: fresh-install provisioning → M9.0 |
+| M2 — Backend Foundation | ✅ COMPLETE | — |
+| M3 — Integration Service | ✅ COMPLETE (superseded) | Extended by M8.1 / M8.2 |
+| M4 — Test Run Domain | ✅ COMPLETE | — |
+| M5 — API | 🟡 IMPLEMENTED | Verification gap: 3 endpoints untested → M9.4 |
+| M6 — SIMRS | 🟡 IMPLEMENTED | Verification gap → M9.4; real E2E → RG-2 (external) |
+| M7 — Frontend | ✅ COMPLETE (as scoped) | Known Deviation: FR-07 / AC-09 → M10.1 |
+| M8.1 — Instrument Config & Supervisor | ✅ COMPLETE | Instruments 2–9 rollout → RG-1 (external) |
+| M8.2 — Ingestion Hardening & Classification | ✅ COMPLETE | Specimen identity DEFERRED → RG-3 |
+| M8.2b — BC-5150 Background Rule | ✅ COMPLETE (field-verified) | QC extension BLOCKED → M9.3b |
+| M8.3 — Parser Registry | ✅ COMPLETE | ASTM DEFERRED |
+| M8.4 — Instrument Order Overview API | ✅ COMPLETE | D4 `total_runs` consciously not implemented |
+| M8.5 — Enterprise Dashboard Integration | ✅ COMPLETE | Tier-2 tests deferred by permitted fallback → M9.4 |
+| M8.6 — Frontend Visual Polish | ✅ COMPLETE | F3 behavioural note; O8 unconfirmed (OD-3) |
+| M9.0 — Deployment & Migration Foundation | ⬜ NOT STARTED | Gate in every posture; baseline strategy undecided (OD-2) |
+| M9.1a — Security Foundation | ⬜ NOT STARTED | Gate in every posture; RBAC option undecided (OD-1) |
+| M9.1b — Audit Attribution | ⬜ NOT STARTED | Gate in every posture; NFR-08 |
+| M9.2 — Deduplication Refinement | ⛔ BLOCKED | Physical evidence; gate from Posture 2 |
+| M9.3a — Fail-Closed Classification, Validated | ✅ COMPLETE | Behaviour from `38a40fb`; verification added by `28ad9b3` |
+| M9.3b — QC / Calibration Filtering | ⛔ BLOCKED | Physical evidence; gate from Posture 2 |
+| M9.4 — QA Debt Closure | ⬜ NOT STARTED | Gate in every posture; closed backlog of six items |
+| M9.5 — Production Hardening | ⬜ NOT STARTED | Gate in every posture; timing constants blocked on T-BC-T |
+| M9.6 — UI Auto-Refresh | ⊘ VACATED | Moved to M10.1 — functional requirement, not hardening |
+| M10.1 — Automatic Dashboard Update | ⬜ NOT STARTED | Gate in every posture; FR-07 / AC-09; closes M7 |
+
+| Release gate | Status | Owner |
+|---|---|---|
+| RG-1 — Second instrument / isolation | ⛔ Externally blocked | Lab management |
+| RG-2 — SIMRS end-to-end delivery | ⛔ Externally blocked | Project owner / hospital IT |
+| RG-3 — `PATIENT_RESULT` enablement | ⛔ Blocked (physical evidence) | Project owner |
 
