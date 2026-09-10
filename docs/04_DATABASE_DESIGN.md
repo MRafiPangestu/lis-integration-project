@@ -1450,7 +1450,147 @@ test_runs.is_final
 
 ---
 
-# 29. Final Design Principle
+# 29. Provisioning & Migration Lifecycle
+
+Sejak M9.0, database LIS dapat di-*provision* sepenuhnya melalui Alembic. *Migration chain* memiliki **satu root** (`8e973e84a9d7`, disebut **R0**) dan **satu head** (`4aff9e134f16`):
+
+```text
+8e973e84a9d7   R0 — baseline skema legacy pra-M1 (evidence-derived)
+     ↓
+b1f9dbe772fa   M1 — transformasi ke desain final (visits, test_runs, dst.)
+     ↓
+4a24240f8c32   no-op historis (upgrade/downgrade = pass)
+     ↓
+621889e316b5   instrument runtime status (connection_status, last_status_at)
+     ↓
+c5465739f048   message classification (message_class, classification_rule)
+     ↓
+4aff9e134f16   M8.4 — index untuk order overview          ← HEAD
+```
+
+Bagian ini menggantikan asumsi lama bahwa "SQL awal" harus dieksekusi manual sebelum migrasi. R0 kini merepresentasikan skema legacy tersebut di dalam *migration graph* yang dikelola versi (commit `d273e7f`), dan `alembic upgrade head` dari database kosong menghasilkan skema final tanpa langkah manual.
+
+## 29.1. Instalasi baru (database kosong)
+
+Jalur *fresh-install* yang otoritatif:
+
+1. Buat database PostgreSQL kosong.
+2. Arahkan konfigurasi koneksi aplikasi ke database tersebut (`DB_HOST=<host>`, `DB_PORT=<port>`, `DB_NAME=<database>`, `DB_USER=<user>`, dan kredensial melalui mekanisme `.env` proyek).
+3. Jalankan:
+
+   ```bash
+   alembic upgrade head
+   ```
+
+4. Hasil: seluruh chain `R0 → b1f9dbe772fa → 4a24240f8c32 → 621889e316b5 → c5465739f048 → 4aff9e134f16` diterapkan; tabel `alembic_version` berisi `4aff9e134f16`.
+
+Database PostgreSQL yang benar-benar kosong kini dapat di-*provision* **sepenuhnya melalui Alembic**. Operator **tidak** perlu — dan tidak boleh diinstruksikan — menjalankan `backend/schema/legacy_schema.sql` secara manual sebagai bagian dari *fresh-install* normal. File tersebut adalah artefak *evidence*, bukan perintah provisioning (lihat Bagian 29.5).
+
+Verifikasi otomatis: `backend/tests/test_migration_chain.py` (commit `b7c3d0e`) menjalankan `alembic upgrade head` terhadap database sekali-pakai dan memeriksa revisi akhir serta invariant struktural skema (jumlah tabel/constraint/index, keberadaan objek M1/M8.2/M8.4, dan absennya objek yang belum di-remediasi).
+
+> **Catatan F-2.** *Fresh-install chain* saat ini menghasilkan `patients.nomor_rm` sebagai `NOT NULL` tetapi **belum** `UNIQUE`. Constraint `UNIQUE(nomor_rm)` pada Bagian 18.2 adalah desain target; migration untuk menambahkannya adalah **remediasi terpisah yang belum ada di chain**. M9.0 tidak menyelesaikan item ini.
+
+## 29.2. Instalasi legacy yang sudah ada
+
+Untuk deployment legacy yang sudah berjalan dengan skema pra-M1:
+
+- 9 tabel legacy: `doctors`, `instrument_messages`, `instruments`, `orders`, `patients`, `results`, `test_groups`, `tests`, `units`;
+- **tanpa** tabel `alembic_version`;
+- skema sesuai `backend/schema/legacy_schema.sql`.
+
+Jalur migrasi:
+
+1. **Backup** database.
+2. **Verifikasi manual** bahwa skema database benar-benar cocok dengan skema R0 / pra-M1 (bandingkan dengan `backend/schema/legacy_schema.sql` atau `backend/schema/canonical_legacy_schema.sql`).
+3. **Jangan** menjalankan `alembic upgrade 8e973e84a9d7` terhadap database legacy yang sudah berisi skema tersebut.
+4. *Stamp* database pada R0:
+
+   ```bash
+   alembic stamp 8e973e84a9d7
+   ```
+
+5. Lalu jalankan:
+
+   ```bash
+   alembic upgrade head
+   ```
+
+**Mengapa *stamp*, bukan *upgrade*:** R0 berisi statement `CREATE TABLE` / `CREATE SEQUENCE` / `ADD CONSTRAINT` untuk skema yang **sudah ada** di database legacy. Menjalankan `upgrade` R0 akan mencoba membuat ulang objek tersebut dan gagal. `alembic stamp` hanya menulis revisi awal yang diketahui ke `alembic_version` **tanpa mengeksekusi DDL R0**, sehingga `alembic upgrade head` berikutnya melanjutkan dari `b1f9dbe772fa` (transformasi M1) di atas skema legacy yang nyata.
+
+> **Peringatan.**
+> - `alembic stamp` **tidak** memverifikasi kompatibilitas skema secara otomatis. *Stamp* hanya benar setelah operator memastikan database memang cocok dengan skema R0 / pra-M1.
+> - *Stamp* yang salah menyebabkan migrasi berjalan dari *state* skema yang keliru dan dapat merusak data.
+> - Backup **wajib** sebelum migrasi lingkungan yang sudah berisi data.
+
+## 29.3. Database development yang sudah ada
+
+`lis_marina_permata_dev` sudah berada pada `4aff9e134f16`. R0 adalah **leluhur** revisi tersebut, bukan migrasi yang perlu diputar ulang. **Jangan** menjalankan R0 langsung terhadap database ini. Jika ada revisi baru di masa depan, `alembic upgrade head` biasa akan melanjutkan dari revisi saat ini.
+
+## 29.4. Database PoC stabil / sumber evidence
+
+`lis_marina_permata` adalah PoC stabil sekaligus sumber *evidence* untuk R0. Database ini **tidak**:
+
+- di-migrasi;
+- di-*stamp*;
+- diubah
+
+oleh alur *provisioning* M9.0. Tidak ada instruksi dalam dokumen ini yang menargetkannya. Skema legacy-nya dipreservasi sebagai `backend/schema/legacy_schema.sql`.
+
+## 29.5. Peran R0 dan `4a24240f8c32`
+
+**R0 (`8e973e84a9d7`)** — baseline skema legacy pra-M1 yang **diturunkan dari evidence**, bukan direkonstruksi atau ditebak. Empat artefak yang harus dibedakan:
+
+| # | Peran | File | SHA-256 |
+|---|---|---|---|
+| 1 | Artefak *evidence* (`pg_dump --schema-only` dari `lis_marina_permata`) | `backend/schema/legacy_schema.sql` | `93d902f67e334c0d6b7ea0ce36a2c81cbb5292781b7d45a920b5cbc67199c81e` |
+| 2 | Baseline kanonik (diturunkan deterministik dari #1) | `backend/schema/canonical_legacy_schema.sql` | `a75046a8dd9b5da4454581ffa8552c5af0e7af7bc380ace6092ddab293e7125d` |
+| 3 | Migration **eksekutabel** (menjalankan DDL kanonik) | `backend/alembic/versions/8e973e84a9d7_r0_legacy_baseline.py` (commit `d273e7f`) | — |
+| 4 | Revisi **no-op historis** | `backend/alembic/versions/4a24240f8c32_legacy_baseline.py` | — |
+
+Prosedur kanonikalisasi #1 → #2 ada di `backend/schema/canonicalize_legacy_schema.py`.
+
+R0 sengaja mempertahankan karakteristik legacy dan **tidak** menormalkannya:
+
+- mekanisme SERIAL (`CREATE SEQUENCE` + `OWNED BY` + `DEFAULT nextval(...)`), **bukan** `IDENTITY`;
+- kolom legacy yang kemudian dihapus M1 (mis. `orders.no_registrasi`, `orders.id_pasien`, `results.id_order`, `results.id_instrument`, `results.id_message`, `results.status_hasil`, `results.divalidasi_oleh`, `results.waktu_validasi`);
+- nama constraint legacy yang persis (beberapa di antaranya di-*drop* by name oleh `b1f9dbe772fa`);
+- `patients.nomor_rm` `NOT NULL` tetapi **NON-UNIQUE**.
+
+R0 **bukan** skema final saat ini — R0 adalah **akar historis** yang diperlukan untuk merekonstruksi *migration chain*. Skema final adalah hasil `alembic upgrade head` (Bagian 32).
+
+**`4a24240f8c32` (`4a24240f8c32_legacy_baseline.py`)** — revisi **no-op historis**:
+
+- `upgrade()` = `pass`;
+- `downgrade()` = `pass`;
+- **tidak** membuat skema legacy;
+- **tidak** berfungsi sebagai R0;
+- tetap ada di *graph* untuk kontinuitas historis.
+
+Nama lama "legacy_baseline" pada revisi ini bersifat historis dan **tidak boleh** disamakan dengan R0. Baseline legacy yang sesungguhnya (evidence-derived) adalah R0 `8e973e84a9d7`. Revisi `4a24240f8c32` **tidak** dihapus, di-*rename*, atau diubah.
+
+## 29.6. Evolusi skema (migration chain)
+
+| Revisi | Peran |
+|---|---|
+| `8e973e84a9d7` (R0) | skema legacy pra-M1 (evidence-derived) |
+| `b1f9dbe772fa` | transformasi M1 — `visits`, `test_runs`, pemindahan traceability instrument/message ke `test_runs`, penghapusan `UNIQUE(id_order, parameter_tes)`, penambahan `UNIQUE(id_run, parameter_tes)` dan *finality rule* |
+| `4a24240f8c32` | no-op historis (*stamp*) |
+| `621889e316b5` | instrument runtime status — `instruments.connection_status`, `instruments.last_status_at` |
+| `c5465739f048` | message classification — `instrument_messages.message_class`, `instrument_messages.classification_rule` |
+| `4aff9e134f16` (HEAD) | empat index query untuk M8.4 order overview |
+
+## 29.7. Peringatan operasional
+
+- **Downgrade penuh tidak didukung.** Bagian ini adalah dokumentasi *upgrade* / *provisioning*. `b1f9dbe772fa.downgrade()` memiliki cacat yang diketahui (menghapus *foreign key* tanpa nama) dan merupakan remediasi terpisah; jangan mengandalkan `alembic downgrade` melewati M1.
+- Jangan menjalankan migrasi terhadap `lis_marina_permata`.
+- Selalu *backup* lingkungan yang berisi data sebelum migrasi.
+- `alembic stamp` tidak memverifikasi skema; verifikasi manual adalah tanggung jawab operator.
+- `alembic check` **belum** bersih terhadap database hasil chain: empat index M8.4 belum dideklarasikan di metadata ORM, sehingga *autogenerate* mengusulkan `DROP INDEX`. Ini adalah item drift ORM yang terpisah dan belum di-remediasi — jangan jadikan `alembic check` sebagai *gate* provisioning untuk saat ini.
+- `backend/schema/legacy_schema.sql` dan `backend/schema/canonical_legacy_schema.sql` adalah artefak *evidence* / baseline untuk menurunkan dan mempreservasi R0 — **bukan** perintah *provisioning* untuk instalasi baru.
+
+---
+
+# 30. Final Design Principle
 
 Prinsip utama database LIS adalah:
 
@@ -1478,7 +1618,7 @@ Setiap pengujian merupakan bagian dari histori.
 
 ---
 
-# 30. Final Database Requirements
+# 31. Final Database Requirements
 
 Database final harus mendukung:
 
@@ -1505,7 +1645,7 @@ Database final harus mendukung:
 
 ---
 
-# 31. Final Schema Summary
+# 32. Final Schema Summary
 
 ```text
                     ┌──────────────┐
@@ -1551,4 +1691,4 @@ test_groups
 
 **Status dokumen:** Final untuk menjadi acuan database architecture LIS MVP.
 
-**Catatan implementasi:** SQL awal yang diberikan sebelumnya merupakan baseline/schema awal dan **belum sepenuhnya sama dengan desain final ini**. Implementasi PostgreSQL harus mengikuti desain final di atas, terutama penambahan `visits` dan `test_runs`, penghapusan `UNIQUE(id_order, parameter_tes)`, serta penerapan Partial Unique Index untuk `is_final`.
+**Catatan implementasi:** SQL awal yang diberikan sebelumnya merupakan baseline/schema awal dan **belum sepenuhnya sama dengan desain final ini**. Implementasi PostgreSQL harus mengikuti desain final di atas, terutama penambahan `visits` dan `test_runs`, penghapusan `UNIQUE(id_order, parameter_tes)`, serta penerapan Partial Unique Index untuk `is_final`. Sejak M9.0, "SQL awal" tersebut terpreservasi sebagai *evidence* R0 (`backend/schema/legacy_schema.sql`) dan **tidak** dijalankan manual pada instalasi baru — prosedur *provisioning* yang otoritatif (fresh-install dan *upgrade* dari legacy) ada di **Bagian 29**.
