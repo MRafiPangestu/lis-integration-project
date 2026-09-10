@@ -37,6 +37,7 @@ SessionTest = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 STRICT = lambda parsed: classify(parsed, resolve_policy("strict"))
 PASSTHROUGH = lambda parsed: classify(parsed, resolve_policy("unverified_passthrough"))
 BC5150 = lambda parsed: classify(parsed, resolve_policy("bc5150_field_verified"))
+BC5150_NAME = lambda parsed: classify(parsed, resolve_policy("bc5150_name_passthrough"))
 
 
 # --- fixtures -------------------------------------------------------------
@@ -862,3 +863,255 @@ def test_bc5150_field_verified_policy_is_selectable_and_documented():
     cfgs = load_instrument_configs(BACKEND_DIR / "instruments.example.json")
     bc5150 = next(c for c in cfgs if c.instrument_name == "Mindray BC-5150")
     assert bc5150.classification_policy == "bc5150_field_verified"
+
+
+# =====================================================================
+# G. bc5150_name_passthrough  —  owner-approved HIGH-RISK name passthrough
+#
+# NOT an evidence rule (docs/09_PHYSICAL_INSTRUMENT_VALIDATION.md §9.5 still
+# records that a positive *evidence* rule is NOT APPROVED). This is an explicit
+# risk-accepted operational policy so observed named patient runs reach the
+# clinical pipeline. Behaviour:
+#     OBR-3 == "Background"           -> NON_PATIENT   / OBR3_BACKGROUND
+#     non-Background + real PID-5     -> PATIENT_RESULT / BC5150_NAME_PASSTHROUGH
+#     non-Background + ""/"UNKNOWN"   -> UNCLASSIFIED  / BC5150_NAME_ABSENT
+# =====================================================================
+
+def _named_bc5150(control_id="N1", obr3="42", pid5="^supartini", with_obx=True) -> bytes:
+    segs = [
+        r"MSH|^~\&|||||20260909142000||ORU^R01|" + control_id + r"|P|2.3.1||||||UNICODE",
+        f"PID|1||^^^^MR||{pid5}|||Female",
+        f"OBR|1||{obr3}|00001^Automated Count^99MRC|||20230518200000|||||||||||||||||HM",
+    ]
+    if with_obx:
+        segs.append("OBX|1|NM|6690-2^WBC^LN||6.80|10*3/uL|4.00-10.00|N|||F")
+        segs.append("OBX|2|NM|718-7^HGB^LN||12.9|g/dL|11.0-16.0|N|||F")
+    return "\r".join(segs).encode("utf-8")
+
+
+# --- classifier unit level ------------------------------------------
+
+def test_name_passthrough_background_is_non_patient_even_with_clinical_obx():
+    # (req 1) Background wins over everything: name populated + clinical OBX.
+    parsed = parse_hl7_bc5150(_named_bc5150(obr3="Background").decode())
+    assert parsed.patient.nama_lengkap == "supartini"
+    assert parsed.results, "fixture carries a clinical-looking payload"
+
+    c = classify(parsed, resolve_policy("bc5150_name_passthrough"))
+    assert c.message_class is MessageClass.NON_PATIENT
+    assert c.classification_rule == "OBR3_BACKGROUND"
+
+
+@pytest.mark.parametrize("obr3", ["Background", "background", "  BACKGROUND  ", "background\t"])
+def test_name_passthrough_background_normalisation(obr3):
+    c = classify(
+        parse_hl7_bc5150(_named_bc5150(obr3=obr3).decode()),
+        resolve_policy("bc5150_name_passthrough"),
+    )
+    assert c.message_class is MessageClass.NON_PATIENT
+    assert c.classification_rule == "OBR3_BACKGROUND"
+
+
+@pytest.mark.parametrize("obr3", ["42", "1", "359", "1010"])
+def test_name_passthrough_named_non_background_is_patient_result(obr3):
+    # (req 2, 8) The one high-risk promotion, and its exact provenance token.
+    parsed = parse_hl7_bc5150(_named_bc5150(obr3=obr3, pid5="^supartini").decode())
+    assert parsed.patient.nama_lengkap == "supartini"
+    assert parsed.order.specimen_no == obr3
+
+    c = classify(parsed, resolve_policy("bc5150_name_passthrough"))
+    assert c.message_class is MessageClass.PATIENT_RESULT, obr3
+    assert c.classification_rule == "BC5150_NAME_PASSTHROUGH"
+
+
+def test_name_passthrough_empty_pid5_is_unclassified():
+    # (req 3) PID-5 absent -> parser sentinel "UNKNOWN" -> UNCLASSIFIED.
+    parsed = parse_hl7_bc5150(_named_bc5150(obr3="42", pid5="").decode())
+    assert parsed.patient.nama_lengkap == "UNKNOWN"
+
+    c = classify(parsed, resolve_policy("bc5150_name_passthrough"))
+    assert c.message_class is MessageClass.UNCLASSIFIED
+    assert c.classification_rule == "BC5150_NAME_ABSENT"
+    assert c.message_class is not MessageClass.PATIENT_RESULT
+    assert c.message_class is not MessageClass.NON_PATIENT
+
+
+@pytest.mark.parametrize("pid5", ["^UNKNOWN", "^unknown", "^UnKnOwN", "UNKNOWN^^^^"])
+def test_name_passthrough_literal_unknown_is_unclassified(pid5):
+    # (req 4, 6) The literal sentinel in any case is excluded, not promoted.
+    parsed = parse_hl7_bc5150(_named_bc5150(obr3="42", pid5=pid5).decode())
+    c = classify(parsed, resolve_policy("bc5150_name_passthrough"))
+    assert c.message_class is MessageClass.UNCLASSIFIED
+    assert c.classification_rule == "BC5150_NAME_ABSENT"
+
+
+@pytest.mark.parametrize("pid5", ["   ", "^   ^", " ^ ^ "])
+def test_name_passthrough_whitespace_only_pid5_is_unclassified(pid5):
+    # (req 5) Whitespace-only PID-5 collapses to the sentinel.
+    parsed = parse_hl7_bc5150(_named_bc5150(obr3="42", pid5=pid5).decode())
+    assert parsed.patient.nama_lengkap == "UNKNOWN"
+    c = classify(parsed, resolve_policy("bc5150_name_passthrough"))
+    assert c.message_class is MessageClass.UNCLASSIFIED
+    assert c.classification_rule == "BC5150_NAME_ABSENT"
+
+
+def test_name_passthrough_preserves_the_parsed_patient_name():
+    # (req 6) Surrounding whitespace on PID-5 does not block promotion, and the
+    # stored/parsed name is the parser's value, never rewritten by the policy.
+    parsed = parse_hl7_bc5150(_named_bc5150(obr3="42", pid5="^  Supartini  ").decode())
+    assert parsed.patient.nama_lengkap == "Supartini"  # parser trims components
+    c = classify(parsed, resolve_policy("bc5150_name_passthrough"))
+    assert c.message_class is MessageClass.PATIENT_RESULT
+    assert parsed.patient.nama_lengkap == "Supartini"  # unchanged by classify()
+
+
+def test_name_passthrough_numeric_obr3_without_name_stays_unclassified():
+    # (req 9) No hidden fallback: numeric OBR-3 alone does not promote.
+    parsed = parse_hl7_bc5150(bc5150_unlabelled_numeric_message(obr3="43").decode())
+    assert parsed.patient.nama_lengkap == "UNKNOWN"
+    c = classify(parsed, resolve_policy("bc5150_name_passthrough"))
+    assert c.message_class is MessageClass.UNCLASSIFIED
+    assert c.classification_rule == "BC5150_NAME_ABSENT"
+
+
+def test_name_passthrough_clinical_obx_without_name_stays_unclassified():
+    # (req 9) Presence of a clinical payload is not a patient signal.
+    parsed = parse_hl7_bc5150(_named_bc5150(obr3="42", pid5="", with_obx=True).decode())
+    assert parsed.patient.nama_lengkap == "UNKNOWN"
+    assert parsed.results, "fixture carries a clinical payload"
+    c = classify(parsed, resolve_policy("bc5150_name_passthrough"))
+    assert c.message_class is MessageClass.UNCLASSIFIED
+    assert c.message_class is not MessageClass.PATIENT_RESULT
+
+
+def test_name_passthrough_rule_tokens_are_stable_and_distinct():
+    from app.integration.classification import (
+        RULE_BC5150_NAME_ABSENT,
+        RULE_BC5150_NAME_PASSTHROUGH,
+        RULE_OBR3_BACKGROUND,
+    )
+
+    assert RULE_BC5150_NAME_PASSTHROUGH == "BC5150_NAME_PASSTHROUGH"
+    assert RULE_BC5150_NAME_ABSENT == "BC5150_NAME_ABSENT"
+    assert len({RULE_BC5150_NAME_PASSTHROUGH, RULE_BC5150_NAME_ABSENT,
+                RULE_OBR3_BACKGROUND, "BC5150_BACKGROUND_ONLY"}) == 4
+
+    policy = resolve_policy("bc5150_name_passthrough")
+    emitted = {
+        classify(parse_hl7_bc5150(raw.decode()), policy).classification_rule
+        for raw in (
+            _named_bc5150(obr3="Background"),
+            _named_bc5150(obr3="42", pid5="^supartini"),
+            _named_bc5150(obr3="42", pid5=""),
+        )
+    }
+    assert emitted == {RULE_OBR3_BACKGROUND, RULE_BC5150_NAME_PASSTHROUGH, RULE_BC5150_NAME_ABSENT}
+
+
+# --- full ingestion (PostgreSQL) -----------------------------------
+
+def test_name_passthrough_named_message_persists_full_clinical_hierarchy(session, instrument_id):
+    # (req 2) The high-risk promotion drives the EXISTING pipeline: Visit ->
+    # Order -> TestRun -> Result, unchanged. classification_rule is persisted.
+    tr = run_message(
+        bc5150_patient_message(control_id="NP1", obr3="30"), instrument_id,
+        classify_fn=BC5150_NAME,
+    )
+
+    m = session.scalars(select(InstrumentMessage)).one()
+    assert m.parse_status == "Success"
+    assert m.message_class == "PATIENT_RESULT"
+    assert m.classification_rule == "BC5150_NAME_PASSTHROUGH"
+
+    run = session.scalars(select(TestRun)).one()
+    assert (run.run_sequence, run.is_final, run.delivery_status) == (1, False, "pending")
+    assert run.id_instrument == instrument_id and run.id_message == m.id_message
+
+    results = session.scalars(select(Result).order_by(Result.id_hasil)).all()
+    assert [(r.parameter_tes, r.nilai_hasil) for r in results] == [("WBC", "7.50"), ("HGB", "13.2")]
+
+    patient = session.scalars(select(Patient)).one()
+    assert patient.nama_lengkap == "supartini"  # PID-5 value stored verbatim
+    assert count(session, Visit) == 1 and count(session, Order) == 1
+    assert tr.acks == [("NP1", True, "")]
+
+
+def test_name_passthrough_background_full_ingestion_creates_no_clinical_rows(session, instrument_id):
+    # (req 1) Background stays raw-only even under this policy.
+    tr = run_message(
+        _named_bc5150(control_id="NP_BG", obr3="Background"), instrument_id,
+        classify_fn=BC5150_NAME,
+    )
+    m = session.scalars(select(InstrumentMessage)).one()
+    assert m.parse_status == "Success"
+    assert m.message_class == "NON_PATIENT"
+    assert m.classification_rule == "OBR3_BACKGROUND"
+    assert count(session, TestRun) == count(session, Result) == 0
+    assert count(session, Patient) == count(session, Visit) == count(session, Order) == 0
+    assert tr.acks == [("NP_BG", True, "")]
+
+
+def test_name_passthrough_unnamed_full_ingestion_creates_no_clinical_rows(session, instrument_id):
+    # (req 3, 9) Unnamed non-Background stays raw-only: fail-closed gate intact.
+    tr = run_message(
+        bc5150_unlabelled_numeric_message(control_id="NP_U", obr3="43"), instrument_id,
+        classify_fn=BC5150_NAME,
+    )
+    m = session.scalars(select(InstrumentMessage)).one()
+    assert m.parse_status == "Success"
+    assert m.message_class == "UNCLASSIFIED"
+    assert m.classification_rule == "BC5150_NAME_ABSENT"
+    assert count(session, TestRun) == count(session, Result) == 0
+    assert count(session, Patient) == count(session, Visit) == count(session, Order) == 0
+    assert tr.acks == [("NP_U", True, "")]
+
+
+# --- regression: other policies / instruments unchanged -------------
+
+def test_name_passthrough_does_not_change_strict_or_field_verified():
+    # (req 7) Same named non-Background message under the other policies is still
+    # fail-closed. Only bc5150_name_passthrough promotes it.
+    parsed = parse_hl7_bc5150(_named_bc5150(obr3="42", pid5="^supartini").decode())
+
+    assert classify(parsed, resolve_policy("strict")).message_class is MessageClass.UNCLASSIFIED
+    fv = classify(parsed, resolve_policy("bc5150_field_verified"))
+    assert fv.message_class is MessageClass.UNCLASSIFIED
+    assert fv.classification_rule == "BC5150_BACKGROUND_ONLY"
+    assert classify(parsed, resolve_policy("bc5150_name_passthrough")).message_class \
+        is MessageClass.PATIENT_RESULT
+
+
+def test_name_passthrough_only_this_policy_emits_patient_result_from_a_named_message():
+    # (req 8) Structural: across every registered policy, PATIENT_RESULT for this
+    # named non-Background BC-5150 message comes only from the explicit passthrough
+    # policies, and the field-verified evidence policy never does.
+    from app.integration.classification import KNOWN_POLICIES
+
+    parsed = parse_hl7_bc5150(_named_bc5150(obr3="42", pid5="^supartini").decode())
+    emitting = {
+        name for name in KNOWN_POLICIES
+        if classify(parsed, resolve_policy(name)).message_class is MessageClass.PATIENT_RESULT
+    }
+    assert emitting == {"bc5150_name_passthrough", "unverified_passthrough"}
+    assert "bc5150_field_verified" not in emitting
+
+
+def test_name_passthrough_is_selectable_and_wired_from_instrument_config(tmp_path):
+    # (req 7 / provenance) A config selecting the new policy resolves to it, and
+    # the token it emits for a promoted message is exactly BC5150_NAME_PASSTHROUGH.
+    import json
+
+    from app.core.config import load_instrument_configs
+    from app.integration.classification import _bc5150_name_passthrough
+
+    path = tmp_path / "instruments.json"
+    path.write_text(json.dumps({"instruments": [{
+        "key": "mindray_bc5150", "instrument_name": "Mindray BC-5150",
+        "host": "127.0.0.1", "port": 5100, "mode": "client",
+        "parser_key": "bc5150_hl7", "identity_prefix": "BC5150-", "enabled": True,
+        "classification_policy": "bc5150_name_passthrough",
+    }]}), encoding="utf-8")
+
+    cfg = load_instrument_configs(path)[0]
+    assert cfg.classification_policy == "bc5150_name_passthrough"
+    assert resolve_policy(cfg.classification_policy) is _bc5150_name_passthrough
