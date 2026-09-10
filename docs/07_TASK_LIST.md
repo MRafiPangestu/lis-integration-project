@@ -727,9 +727,11 @@ Every API endpoint is currently unauthenticated, including the Final Run and SIM
 - [ ] Retransmissions with changed timestamps
 - [ ] Supplementary keys such as HL7 Control ID where justified
 
-**Blocker (physical evidence, `09_PHYSICAL_INSTRUMENT_VALIDATION.md` §8):** T-BC-B (genuine repeat run), T-BC-D, E, F, I, R, and T-ID-02. §8.5 records that the existing M8.2 guard **has never been exercised in the field** — under the fail-closed policy a BC-5150 message returns before the guard is reached. §8.5 also states that **no deduplication algorithm should be chosen** before those tests complete; none is proposed here.
+**Blocker (physical evidence, `09_PHYSICAL_INSTRUMENT_VALIDATION.md` §8):** T-BC-B (genuine repeat run), T-BC-D, E, F, I, R, and T-ID-02 — genuine repeat run vs retransmission, reconnect resend, ACK-timeout resend, timestamp mutation on retransmission, control-ID behaviour, and specimen-counter recycling all remain unobserved. §8.5 also states that **no deduplication algorithm should be chosen** before those tests complete; none is proposed here.
 
-> **Conditional release gate.** **Not** a gate for Posture 1 — no clinical rows are created, so there is nothing to duplicate. **Required before Posture 2** (`PATIENT_RESULT` enablement), where the guard becomes reachable and a resend with a changed OBR-7 would create a duplicate clinical run.
+> **The blocker semantics changed with the BC-5150 high-risk enablement — the evidence gap did not.** §8.5 recorded that the M8.2 guard had *never been exercised*, because under the fail-closed policy a BC-5150 message returned before reaching it. Under the owner-approved `bc5150_name_passthrough` policy (`docs/BC5150_HIGH_RISK_DECISION.md`) **named BC-5150 messages now reach the exact-retransmission guard.** M9.2 is therefore no longer blocked by the *absence of a patient path*; it is blocked solely by the **physical evidence gap above**, and it is now operationally relevant rather than dormant. No claim of correct dedup behaviour against the physical device is made — the guard has still not been exercised in the field.
+
+> **Conditional release gate.** **Required before Posture 2** (`PATIENT_RESULT` enablement), where a resend with a changed OBR-7 would create a duplicate clinical run. Not a gate for Posture 1 as defined — but see the live-deployment exception recorded under **Release Gates**, where clinical rows *are* being created ahead of this gate.
 
 ### M9.3a — Fail-Closed Classification, Validated — **COMPLETE**
 
@@ -743,14 +745,30 @@ Discharges the third bullet of the original M9.3 scope: *validate that the conse
 
 **Evidence:** E1 — 28 BC-5150 tests in `backend/tests/test_ingestion.py` §K, including assertions that unlabelled and patient-like messages create no clinical rows. E4 — `09_PHYSICAL_INSTRUMENT_VALIDATION.md` §18 (T-BC-J), §5.7 (27 consistent historical Background captures plus 2 live session-1 captures, no counter-example), §9.4–§9.5 (the quarantine consequence, and positive `PATIENT_RESULT` recorded as NOT APPROVED).
 
-### M9.3b — QC / Calibration Filtering — **BLOCKED**
+> **The deployed BC-5150 policy is no longer `bc5150_field_verified`.** The live deployment runs the owner-approved **HIGH-RISK** `bc5150_name_passthrough` policy — see **`docs/BC5150_HIGH_RISK_DECISION.md`**. The fail-closed behaviour validated here is unchanged in code and remains selectable; it is simply not the policy currently configured for the BC-5150. M9.3a's status is unaffected.
 
-- [ ] Expanded per-instrument QC / calibration rules from field-verified instrument-specific semantics
-- [ ] Filter QC / calibration data from patient results
+### M9.3b — QC / Calibration Filtering — **BLOCKED (evidence-based objective unmet; interim high-risk exception active)**
+
+**Decision record: `docs/BC5150_HIGH_RISK_DECISION.md`.** The owner has accepted an explicit, unverified interim posture so live BC-5150 results reach the clinical pipeline now. That is an **operational exception, not the completion of M9.3's evidence-based objective.**
+
+**Implemented (does not close this milestone):**
+
+- [x] Fail-closed BC-5150 classification foundation — see M9.3a
+- [x] Owner-approved HIGH-RISK name-based passthrough (`bc5150_name_passthrough`, commit `26b5396`): OBR-3 `Background` → `NON_PATIENT`; non-Background with a real PID-5 name → `PATIENT_RESULT` / `BC5150_NAME_PASSTHROUGH`; non-Background with empty / whitespace-only / `UNKNOWN` PID-5 → `UNCLASSIFIED`
+- [x] Operational patient-result flow for the BC-5150 — verified end to end against real PostgreSQL (Patient → Visit → Order → TestRun → Result); backend suite **215 passed**
+
+**Still incomplete / blocked on field evidence:**
+
+- [ ] Evidence-based positive patient discriminator
+- [ ] QC / control message characterisation
+- [ ] Calibration / maintenance classification
+- [ ] Validated filtering of QC / calibration from patient results
 
 **Blocker (physical evidence, `09_PHYSICAL_INSTRUMENT_VALIDATION.md` §9):** QC, calibration, maintenance and control material all have **zero captures**. Required: T-BC-K twice on different days, plus L, M, N and H; scheduling depends on lab-management question Q1. §9.5 records positive patient classification as **NOT APPROVED**, with one candidate falsified and the rest unresolved. **No QC or positive-patient rule is proposed here.**
 
-> **Conditional release gate.** **Not** a gate for Posture 1 — nothing is classified `PATIENT_RESULT`, so QC cannot contaminate a patient record. **Required before Posture 2**, where a misclassified QC run would write control-material values into a patient record.
+> **QC filtering is not solved.** The passthrough is a heuristic keyed on a name string; a QC, control, calibration or maintenance run carrying any PID-5 name would still be persisted as a patient result. Live operation under this policy demonstrates only that the pipeline *functions* — it establishes nothing about patient vs. QC semantics, which remain governed solely by `09_PHYSICAL_INSTRUMENT_VALIDATION.md`. Rollback is a one-field change back to `bc5150_field_verified` (decision record §6).
+
+> **Conditional release gate.** **Required before Posture 2**, where a misclassified QC run would write control-material values into a patient record. Not a gate for Posture 1 as defined — but see the live-deployment exception recorded under **Release Gates**, where that risk has been explicitly accepted ahead of this gate.
 
 ### M9.4 — QA Debt Closure — **NOT STARTED**
 
@@ -854,10 +872,18 @@ This posture demonstrates transport, MLLP framing, `MSA|AA` acknowledgement, the
 | M9.4 QA Debt Closure | **Yes** |
 | M9.5 Production Hardening | **Yes** |
 | M10.1 Automatic Dashboard Update | **Yes** |
-| M9.2 dedup · M9.3b QC · specimen identity | **No** — nothing clinical is persisted |
+| M9.2 dedup · M9.3b QC · specimen identity | **No** — nothing clinical is persisted *in this posture as defined* |
 | RG-1 second instrument · RG-2 SIMRS E2E | **No** |
 
 *Recommended interim target (**OD-4**) — a recommendation, not an approved decision.*
+
+> ### ⚠ Live-deployment exception to Posture 1 — active
+>
+> **The BC-5150 is currently running outside this posture by explicit owner decision.** Under `bc5150_name_passthrough` (`docs/BC5150_HIGH_RISK_DECISION.md`, commit `26b5396`) named non-Background BC-5150 messages **are** promoted to `PATIENT_RESULT` and **do** create Patient / Visit / Order / TestRun / Result rows. The Posture 1 definition above therefore no longer describes the live BC-5150 configuration.
+>
+> This is **not** Posture 2: **M9.2, M9.3b and the specimen-identity decision have not cleared.** Clinical enablement has been taken ahead of its gates as an accepted interim risk, not because the gates were satisfied. The gates remain open and remain required for an actual Posture 2 release.
+>
+> Activation is a single field in the gitignored `backend/instruments.json`; the tracked `instruments.example.json` stays at `bc5150_field_verified`, so a fresh deployment is still fail-closed. Rollback is that one field (decision record §6). The exception closes when the physical QC evidence in decision record §7 lands.
 
 ## Posture 2 — Clinical enablement for BC-5150
 
@@ -873,6 +899,8 @@ This posture demonstrates transport, MLLP framing, `MSA|AA` acknowledgement, the
 | RG-1 second instrument · RG-2 SIMRS E2E | **No** |
 
 **`PATIENT_RESULT` must not be enabled unless all three clear.** `09_PHYSICAL_INSTRUMENT_VALIDATION.md` §9.6 states that M9.3 and the §10 identity question must **both** clear — neither alone is sufficient.
+
+> This remains the rule for a **Posture 2 release**. The live BC-5150 deployment currently runs `PATIENT_RESULT` ahead of it under the documented owner exception above (`docs/BC5150_HIGH_RISK_DECISION.md`) — a knowingly accepted interim risk, not a satisfied gate and not a Posture 2 release.
 
 ## Posture 3 — Full MVP sign-off
 
@@ -947,9 +975,9 @@ Status vocabulary and the completion rule are defined at the top of this documen
 | M9.0 — Deployment & Migration Foundation | ✅ COMPLETE | Root migration R0 `8e973e84a9d7` implemented + validated (`d273e7f`); automated migration-chain test added (`b7c3d0e`); provisioning documentation completed (`ffb81f9`); one root, one head; OD-2 resolved (Option A′). F-2 (`nomor_rm` UNIQUE), F-3 (M8.4 index drift) and the M1 downgrade defect remain separate follow-ups. Gate in every posture |
 | M9.1a — Security Foundation | ⬜ NOT STARTED | Gate in every posture; RBAC option undecided (OD-1) |
 | M9.1b — Audit Attribution | ⬜ NOT STARTED | Gate in every posture; NFR-08 |
-| M9.2 — Deduplication Refinement | ⛔ BLOCKED | Physical evidence; gate from Posture 2 |
-| M9.3a — Fail-Closed Classification, Validated | ✅ COMPLETE | Behaviour from `38a40fb`; verification added by `28ad9b3` |
-| M9.3b — QC / Calibration Filtering | ⛔ BLOCKED | Physical evidence; gate from Posture 2 |
+| M9.2 — Deduplication Refinement | ⛔ BLOCKED | Physical evidence only; guard now **reachable** under the BC-5150 high-risk policy — no longer blocked by the absence of a patient path |
+| M9.3a — Fail-Closed Classification, Validated | ✅ COMPLETE | Behaviour from `38a40fb`; verification added by `28ad9b3`. Deployed BC-5150 policy is now `bc5150_name_passthrough` |
+| M9.3b — QC / Calibration Filtering | ⛔ BLOCKED | Physical evidence; evidence-based objective unmet. Interim HIGH-RISK exception active — `docs/BC5150_HIGH_RISK_DECISION.md` |
 | M9.4 — QA Debt Closure | ⬜ NOT STARTED | Gate in every posture; closed backlog of six items |
 | M9.5 — Production Hardening | ⬜ NOT STARTED | Gate in every posture; timing constants blocked on T-BC-T |
 | M9.6 — UI Auto-Refresh | ⊘ VACATED | Moved to M10.1 — functional requirement, not hardening |
