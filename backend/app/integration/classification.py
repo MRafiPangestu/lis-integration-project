@@ -8,11 +8,20 @@ policy for an instrument is a configuration decision
 (``InstrumentConfig.classification_policy``); an instrument with no policy
 configured resolves to ``strict`` -> ``UNCLASSIFIED``.
 
-``bc5150_field_verified`` is the M8.2b policy: it is the only vendor-specific
-rule, it is opt-in via configuration, and it is grounded solely in committed
-field captures from the physical Mindray BC-5150. It stays fail-closed — it
-identifies the "Background" run as NON_PATIENT and leaves everything else
+``bc5150_field_verified`` is the M8.2b policy: it is the only *evidence-based*
+vendor rule, it is opt-in via configuration, and it is grounded solely in
+committed field captures from the physical Mindray BC-5150. It stays fail-closed
+— it identifies the "Background" run as NON_PATIENT and leaves everything else
 UNCLASSIFIED (see ``_bc5150_field_verified``).
+
+``bc5150_name_passthrough`` is an owner-approved **HIGH-RISK** BC-5150 policy
+(see ``_bc5150_name_passthrough``). It is **not** evidence-validated: it keeps
+the verified Background rule and then, as an explicit risk-accepted decision,
+lets a *named* non-Background message become PATIENT_RESULT so observed patient
+runs reach clinical persistence. It is opt-in per instrument and never a default;
+``docs/09_PHYSICAL_INSTRUMENT_VALIDATION.md`` §9.5 still records that a positive
+*evidence* rule is NOT APPROVED — this policy is a separate operational choice,
+parallel to ``unverified_passthrough``.
 """
 from __future__ import annotations
 
@@ -49,6 +58,12 @@ RULE_UNPARSEABLE = "unparseable"
 RULE_CLASSIFIER_ERROR = "classifier_error"
 RULE_OBR3_BACKGROUND = "OBR3_BACKGROUND"
 RULE_BC5150_BACKGROUND_ONLY = "BC5150_BACKGROUND_ONLY"
+RULE_BC5150_NAME_PASSTHROUGH = "BC5150_NAME_PASSTHROUGH"
+RULE_BC5150_NAME_ABSENT = "BC5150_NAME_ABSENT"
+
+# ``parse_hl7_bc5150`` substitutes this literal for an absent / whitespace-only
+# PID-5. "name populated" must therefore exclude it as well as "".
+_BC5150_EMPTY_NAME_SENTINEL = "unknown"  # compared stripped + casefolded
 
 # A policy is a pure function over a successfully parsed message. It is never
 # called with ``None`` — :func:`classify` handles the unparseable case.
@@ -97,10 +112,50 @@ def _bc5150_field_verified(parsed: "ParsedHL7") -> Classification:
     return Classification(MessageClass.UNCLASSIFIED, RULE_BC5150_BACKGROUND_ONLY)
 
 
+def _bc5150_name_passthrough(parsed: "ParsedHL7") -> Classification:
+    """Owner-approved HIGH-RISK Mindray BC-5150 name passthrough — NOT evidence-validated.
+
+    The only field-verified BC-5150 non-patient discriminator is OBR-3 ==
+    "Background" (see ``_bc5150_field_verified``). This policy keeps that rule and
+    then — as an explicit owner decision that accepts the risk — lets a *named*
+    non-Background message through to clinical persistence:
+
+        OBR-3 (stripped, casefolded) == "background"
+            -> NON_PATIENT / OBR3_BACKGROUND               (field-verified)
+        else, PID-5 name populated (not "" and not the "UNKNOWN" sentinel,
+        compared stripped + casefolded)
+            -> PATIENT_RESULT / BC5150_NAME_PASSTHROUGH     (HIGH RISK — unverified)
+        else (empty / "UNKNOWN" name)
+            -> UNCLASSIFIED / BC5150_NAME_ABSENT            (fail closed)
+
+    This is a heuristic, not evidence. A mislabelled QC / calibration / control /
+    maintenance run that happens to carry a name string in PID-5 would be
+    persisted as a patient result — ``docs/09_PHYSICAL_INSTRUMENT_VALIDATION.md``
+    §9.5 still records that a positive *evidence* rule is NOT APPROVED. It is
+    opt-in per instrument (``InstrumentConfig.classification_policy``) and never
+    the default. A non-Background message is not promoted merely by not matching
+    "Background": an unnamed one stays UNCLASSIFIED, exactly like
+    ``bc5150_field_verified``. The parsed patient name is only read here, never
+    rewritten — clinical persistence stores it verbatim.
+    """
+    specimen = (parsed.order.specimen_no or "").strip().casefold()
+    if specimen == "background":
+        return Classification(MessageClass.NON_PATIENT, RULE_OBR3_BACKGROUND)
+
+    name = (parsed.patient.nama_lengkap or "").strip()
+    if name and name.casefold() != _BC5150_EMPTY_NAME_SENTINEL:
+        return Classification(
+            MessageClass.PATIENT_RESULT, RULE_BC5150_NAME_PASSTHROUGH
+        )
+
+    return Classification(MessageClass.UNCLASSIFIED, RULE_BC5150_NAME_ABSENT)
+
+
 _POLICIES: "dict[str, Policy]" = {
     "strict": _strict,
     "unverified_passthrough": _unverified_passthrough,
     "bc5150_field_verified": _bc5150_field_verified,
+    "bc5150_name_passthrough": _bc5150_name_passthrough,
 }
 
 KNOWN_POLICIES = frozenset(_POLICIES)
