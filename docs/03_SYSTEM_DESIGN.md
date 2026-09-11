@@ -526,6 +526,8 @@ Modul integrasi SIMRS bertanggung jawab terhadap:
 
 Detail endpoint, format payload, metode autentikasi, dan kontrak API akan ditentukan setelah spesifikasi API SIMRS diperoleh.
 
+**Catatan M9.1a.** Endpoint riwayat hasil laboratorium (`GET /api/patients/{nomor_rm}/history`) kini memerlukan autentikasi JWT Bearer standar seperti seluruh endpoint `/api` lainnya (lihat §11.4) — permintaan tanpa token ditolak. Ini **bukan** mekanisme autentikasi khusus SIMRS: belum ada *service principal* atau skema API key *inbound* yang dirancang untuk SIMRS secara spesifik. Metode autentikasi SIMRS tetap menunggu spesifikasi API SIMRS sebagaimana disebutkan di atas.
+
 ---
 
 ## 10. Data Persistence & Transaction Integrity
@@ -566,25 +568,42 @@ Akses sistem dibatasi pada jaringan internal rumah sakit sesuai kebutuhan operas
 
 ### 11.2 Role-Based Access Control
 
-Akses pengguna dibatasi berdasarkan peran.
-
-Contoh:
+Akses pengguna dibatasi berdasarkan peran. Sebelum M9.1a, tabel berikut bersifat ilustratif ("Contoh:"); sejak M9.1a, tabel ini merepresentasikan peran yang **diimplementasikan**:
 
 ```text
-Analis
+ANALYST
  ├── View Results
  ├── Review Test Runs
- └── Select Final Run
+ ├── Select Final Run
+ └── Delivery / SIMRS Sync
 
-Administrator
- └── System / Configuration Management
+ADMIN
+ ├── (seluruh kapabilitas ANALYST)
+ └── User Management (create / disable / list account)
 ```
 
-Hak akses aktual dapat disesuaikan dengan kebutuhan rumah sakit.
+ADMIN mewarisi seluruh kapabilitas ANALYST, ditambah manajemen pengguna (OD-1 = Option B, `docs/M9.1a_SECURITY_FOUNDATION_DESIGN.md`). Tidak ada endpoint, pada peran manapun, yang dapat mengubah nilai hasil klinis — lihat §11.3. Detail mekanisme autentikasi ada di §11.4.
 
 ### 11.3 Clinical Data Protection
 
 Tidak tersedia endpoint atau antarmuka aplikasi untuk mengubah nilai klinis yang berasal dari instrumen.
+
+### 11.4 Autentikasi & Batas API (M9.1a)
+
+- **Mekanisme:** JWT Bearer (HS256), masa berlaku token 8 jam, tanpa refresh token. `JWT_SECRET_KEY` wajib dikonfigurasi dengan nilai yang cukup kuat — aplikasi menolak untuk start apabila kosong, lemah, atau masih berupa placeholder.
+- **Deny-by-default:** seluruh endpoint `/api` memerlukan token yang valid. Satu-satunya endpoint publik tanpa autentikasi adalah `GET /health` dan `POST /api/auth/login`.
+- **Peran diambil dari baris `User` di database pada setiap request** (bukan dari klaim token) — akun yang dinonaktifkan (`is_active = false`) langsung kehilangan akses pada request berikutnya.
+- **Password** disimpan dengan Argon2id; tidak pernah disimpan atau dicatat dalam bentuk plaintext.
+- **CORS** menggunakan daftar origin eksplisit (`CORS_ALLOW_ORIGINS`), `allow_credentials=false`; tidak ada wildcard.
+- **Dokumentasi API** (`/docs`, `/redoc`, `/openapi.json`) tersedia hanya pada `ENVIRONMENT=development` dan dinonaktifkan pada `ENVIRONMENT=production`.
+- **Frontend:** token disimpan pada `sessionStorage` melalui `AuthProvider`/`LoginView`; satu titik pemasangan header (`client.ts`) menambahkan `Authorization: Bearer` pada setiap request dan membersihkan sesi saat menerima respons 401.
+
+**Belum diimplementasikan, secara sengaja:**
+- **Atribusi pengguna** pada mutasi workflow (siapa yang finalize / unfinalize / deliver) — lihat M9.1b di `07_TASK_LIST.md`.
+- **TLS/HTTPS** — §11.1 (pembatasan jaringan) tetap menjadi kontrol utama untuk lalu lintas saat ini; ini adalah keputusan terbuka (OD-S6), bukan bagian dari M9.1a.
+- **Autentikasi khusus SIMRS *inbound*** (service principal) — lihat §9.2; tetap merupakan keputusan eksternal (OD-S3).
+
+Rincian desain dan verifikasi lengkap: `M9.1a_SECURITY_FOUNDATION_DESIGN.md`.
 
 ---
 

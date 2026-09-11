@@ -1255,6 +1255,8 @@ delivered_at
 
 Metadata tersebut dapat berubah sesuai workflow tanpa mengubah data klinis.
 
+Tabel `users` (autentikasi API, M9.1a) juga termasuk Workflow Metadata — lihat Bagian 33. Tabel ini mengendalikan *siapa* yang boleh menjalankan workflow, bukan data klinis itu sendiri, dan tidak memiliki relasi foreign key ke hierarki `patients → visits → orders → test_runs → results` di atas.
+
 Dengan demikian:
 
 ```text
@@ -1452,7 +1454,7 @@ test_runs.is_final
 
 # 29. Provisioning & Migration Lifecycle
 
-Sejak M9.0, database LIS dapat di-*provision* sepenuhnya melalui Alembic. *Migration chain* memiliki **satu root** (`8e973e84a9d7`, disebut **R0**) dan **satu head** (`4aff9e134f16`):
+Sejak M9.0, database LIS dapat di-*provision* sepenuhnya melalui Alembic. *Migration chain* memiliki **satu root** (`8e973e84a9d7`, disebut **R0**) dan **satu head** (`27e00bcff992`, sejak M9.1a):
 
 ```text
 8e973e84a9d7   R0 — baseline skema legacy pra-M1 (evidence-derived)
@@ -1465,10 +1467,12 @@ b1f9dbe772fa   M1 — transformasi ke desain final (visits, test_runs, dst.)
      ↓
 c5465739f048   message classification (message_class, classification_rule)
      ↓
-4aff9e134f16   M8.4 — index untuk order overview          ← HEAD
+4aff9e134f16   M8.4 — index untuk order overview
+     ↓
+27e00bcff992   M9.1a — tabel users (autentikasi)           ← HEAD
 ```
 
-Bagian ini menggantikan asumsi lama bahwa "SQL awal" harus dieksekusi manual sebelum migrasi. R0 kini merepresentasikan skema legacy tersebut di dalam *migration graph* yang dikelola versi (commit `d273e7f`), dan `alembic upgrade head` dari database kosong menghasilkan skema final tanpa langkah manual.
+Bagian ini menggantikan asumsi lama bahwa "SQL awal" harus dieksekusi manual sebelum migrasi. R0 kini merepresentasikan skema legacy tersebut di dalam *migration graph* yang dikelola versi (commit `d273e7f`), dan `alembic upgrade head` dari database kosong menghasilkan skema final tanpa langkah manual. `27e00bcff992` (M9.1a) ditulis manual (*hand-authored*), bukan hasil `--autogenerate` — lihat Bagian 33 untuk alasannya.
 
 ## 29.1. Instalasi baru (database kosong)
 
@@ -1482,13 +1486,20 @@ Jalur *fresh-install* yang otoritatif:
    alembic upgrade head
    ```
 
-4. Hasil: seluruh chain `R0 → b1f9dbe772fa → 4a24240f8c32 → 621889e316b5 → c5465739f048 → 4aff9e134f16` diterapkan; tabel `alembic_version` berisi `4aff9e134f16`.
+4. Hasil: seluruh chain `R0 → b1f9dbe772fa → 4a24240f8c32 → 621889e316b5 → c5465739f048 → 4aff9e134f16 → 27e00bcff992` diterapkan; tabel `alembic_version` berisi `27e00bcff992`.
+5. **(M9.1a)** Buat akun ADMIN pertama secara interaktif:
+
+   ```bash
+   py scripts/create_admin.py --username <nama>
+   ```
+
+   Skrip ini **tidak** dijalankan otomatis oleh migrasi atau saat startup aplikasi (lihat Bagian 33) — tanpa langkah ini, sistem terkunci sepenuhnya (*deny-by-default* tanpa akun berarti tidak ada yang bisa login, yang merupakan mode kegagalan yang benar).
 
 Database PostgreSQL yang benar-benar kosong kini dapat di-*provision* **sepenuhnya melalui Alembic**. Operator **tidak** perlu — dan tidak boleh diinstruksikan — menjalankan `backend/schema/legacy_schema.sql` secara manual sebagai bagian dari *fresh-install* normal. File tersebut adalah artefak *evidence*, bukan perintah provisioning (lihat Bagian 29.5).
 
-Verifikasi otomatis: `backend/tests/test_migration_chain.py` (commit `b7c3d0e`) menjalankan `alembic upgrade head` terhadap database sekali-pakai dan memeriksa revisi akhir serta invariant struktural skema (jumlah tabel/constraint/index, keberadaan objek M1/M8.2/M8.4, dan absennya objek yang belum di-remediasi).
+Verifikasi otomatis: `backend/tests/test_migration_chain.py` (commit `b7c3d0e`; diperluas pada M9.1a untuk tabel `users`) menjalankan `alembic upgrade head` terhadap database sekali-pakai dan memeriksa revisi akhir serta invariant struktural skema (jumlah tabel/constraint/index, keberadaan objek M1/M8.2/M8.4/M9.1a, dan absennya objek yang belum di-remediasi).
 
-> **Catatan F-2.** *Fresh-install chain* saat ini menghasilkan `patients.nomor_rm` sebagai `NOT NULL` tetapi **belum** `UNIQUE`. Constraint `UNIQUE(nomor_rm)` pada Bagian 18.2 adalah desain target; migration untuk menambahkannya adalah **remediasi terpisah yang belum ada di chain**. M9.0 tidak menyelesaikan item ini.
+> **Catatan F-2.** *Fresh-install chain* saat ini menghasilkan `patients.nomor_rm` sebagai `NOT NULL` tetapi **belum** `UNIQUE`. Constraint `UNIQUE(nomor_rm)` pada Bagian 18.2 adalah desain target; migration untuk menambahkannya adalah **remediasi terpisah yang belum ada di chain**. M9.0 tidak menyelesaikan item ini, dan M9.1a juga tidak menyentuhnya — lihat Bagian 33.
 
 ## 29.2. Instalasi legacy yang sudah ada
 
@@ -1515,6 +1526,8 @@ Jalur migrasi:
    alembic upgrade head
    ```
 
+6. **(M9.1a)** Buat akun ADMIN pertama — identik dengan langkah 5 pada Bagian 29.1 (`py scripts/create_admin.py --username <nama>`).
+
 **Mengapa *stamp*, bukan *upgrade*:** R0 berisi statement `CREATE TABLE` / `CREATE SEQUENCE` / `ADD CONSTRAINT` untuk skema yang **sudah ada** di database legacy. Menjalankan `upgrade` R0 akan mencoba membuat ulang objek tersebut dan gagal. `alembic stamp` hanya menulis revisi awal yang diketahui ke `alembic_version` **tanpa mengeksekusi DDL R0**, sehingga `alembic upgrade head` berikutnya melanjutkan dari `b1f9dbe772fa` (transformasi M1) di atas skema legacy yang nyata.
 
 > **Peringatan.**
@@ -1524,7 +1537,7 @@ Jalur migrasi:
 
 ## 29.3. Database development yang sudah ada
 
-`lis_marina_permata_dev` sudah berada pada `4aff9e134f16`. R0 adalah **leluhur** revisi tersebut, bukan migrasi yang perlu diputar ulang. **Jangan** menjalankan R0 langsung terhadap database ini. Jika ada revisi baru di masa depan, `alembic upgrade head` biasa akan melanjutkan dari revisi saat ini.
+`lis_marina_permata_dev` sudah berada pada `27e00bcff992` (HEAD, sejak M9.1a — sebelumnya `4aff9e134f16`). R0 adalah **leluhur** revisi tersebut, bukan migrasi yang perlu diputar ulang. **Jangan** menjalankan R0 langsung terhadap database ini. Jika ada revisi baru di masa depan, `alembic upgrade head` biasa akan melanjutkan dari revisi saat ini.
 
 ## 29.4. Database PoC stabil / sumber evidence
 
@@ -1577,7 +1590,8 @@ Nama lama "legacy_baseline" pada revisi ini bersifat historis dan **tidak boleh*
 | `4a24240f8c32` | no-op historis (*stamp*) |
 | `621889e316b5` | instrument runtime status — `instruments.connection_status`, `instruments.last_status_at` |
 | `c5465739f048` | message classification — `instrument_messages.message_class`, `instrument_messages.classification_rule` |
-| `4aff9e134f16` (HEAD) | empat index query untuk M8.4 order overview |
+| `4aff9e134f16` | empat index query untuk M8.4 order overview |
+| `27e00bcff992` (HEAD) | M9.1a — tabel `users` (autentikasi API); lihat Bagian 33 |
 
 ## 29.7. Peringatan operasional
 
@@ -1689,6 +1703,39 @@ test_groups
      └────────────── 1:N ──────────────► tests
 ```
 
-**Status dokumen:** Final untuk menjadi acuan database architecture LIS MVP.
+**Status dokumen:** Final untuk menjadi acuan database architecture LIS MVP — diagram di atas merepresentasikan hierarki **Clinical Data** dan *master data* terkait.
 
 **Catatan implementasi:** SQL awal yang diberikan sebelumnya merupakan baseline/schema awal dan **belum sepenuhnya sama dengan desain final ini**. Implementasi PostgreSQL harus mengikuti desain final di atas, terutama penambahan `visits` dan `test_runs`, penghapusan `UNIQUE(id_order, parameter_tes)`, serta penerapan Partial Unique Index untuk `is_final`. Sejak M9.0, "SQL awal" tersebut terpreservasi sebagai *evidence* R0 (`backend/schema/legacy_schema.sql`) dan **tidak** dijalankan manual pada instalasi baru — prosedur *provisioning* yang otoritatif (fresh-install dan *upgrade* dari legacy) ada di **Bagian 29**.
+
+**Catatan M9.1a:** tabel `users` (autentikasi API) ditambahkan setelah head migrasi ini sebagai *Workflow Metadata* terpisah — lihat Bagian 33. Tabel tersebut sengaja **tidak** digambarkan pada diagram di atas karena tidak memiliki relasi foreign key ke hierarki klinis manapun; diagram di atas tetap final untuk data klinis.
+
+---
+
+# 33. Users Table — Authentication (M9.1a)
+
+**Tujuan.** Tabel `users` menyimpan akun aplikasi untuk autentikasi API (JWT Bearer) yang diimplementasikan pada M9.1a. Ini adalah *Workflow Metadata* (Bagian 25) — mengendalikan siapa yang boleh menjalankan workflow LIS, bukan data klinis — dan **tidak** menjadikan LIS sebagai sumber kebenaran identitas pengguna rumah sakit di luar konteks login aplikasi ini (konsisten dengan batas desain di Bagian 26, yang berbicara tentang identitas **pasien**, bukan akun staf LIS).
+
+**Migrasi.** `backend/alembic/versions/27e00bcff992_m9_1a_add_users_table.py`, `down_revision = "4aff9e134f16"` — revisi tunggal setelah HEAD M8.4, ditulis manual (*hand-authored*), **bukan** hasil `alembic revision --autogenerate`. Alasan: skema saat ini memiliki dua drift ORM yang diketahui dan sengaja belum diremediasi — F-2 (`patients.nomor_rm` belum `UNIQUE`) dan F-3 (empat index M8.4 ada di chain tapi tidak di model ORM manapun). `--autogenerate` pada titik ini akan mengusulkan penambahan `UNIQUE(patients.nomor_rm)` yang belum disetujui **dan** penghapusan keempat index M8.4 — keduanya di luar cakupan M9.1a. Migrasi `27e00bcff992` **hanya** membuat tabel `users`; F-2, F-3, dan defek *downgrade* `b1f9dbe772fa` (F-4) tetap menjadi remediasi terpisah, tidak disentuh, tidak diperparah.
+
+**Kolom dan constraint yang diimplementasikan** (`app/models/user.py`):
+
+| Kolom | Tipe | Constraint |
+|---|---|---|
+| `id_user` | `SERIAL` (PK, autoincrement) | Primary key. **Bukan** `IDENTITY` — mengikuti konvensi SERIAL seluruh skema (kaidah fidelitas M9.0) |
+| `username` | `VARCHAR(50)` | `NOT NULL`, `UNIQUE` (`users_username_key`) |
+| `nama_lengkap` | `VARCHAR(100)` | `NOT NULL` |
+| `password_hash` | `VARCHAR(255)` | `NOT NULL` — menyimpan output Argon2id yang sudah di-encode, tidak pernah plaintext |
+| `role` | `VARCHAR(20)` | `NOT NULL` |
+| `is_active` | `BOOLEAN` | `NOT NULL`, `server_default = true` |
+| `created_at` | `TIMESTAMP` (tanpa timezone) | `NOT NULL`, `server_default = CURRENT_TIMESTAMP` |
+| `last_login_at` | `TIMESTAMP` (tanpa timezone) | nullable |
+
+Tidak ada foreign key dari atau ke `users` — diverifikasi oleh `backend/tests/test_migration_chain.py`.
+
+**Semantik `role`.** Disimpan sebagai `VARCHAR(20)`, divalidasi di level aplikasi (`app/core/security.py:Role`), **bukan** `CHECK` constraint di database — mengikuti konvensi yang sudah ada di skema ini (nol `CHECK` constraint sebelum M9.1a; `delivery_status` dan `connection_status` memakai pola app-level-enum-sebagai-VARCHAR yang sama). Dua nilai valid: `ANALYST` dan `ADMIN`. ADMIN mewarisi seluruh kapabilitas ANALYST ditambah manajemen pengguna (OD-1 = Option B — lihat `03_SYSTEM_DESIGN.md` §11.2 dan `M9.1a_SECURITY_FOUNDATION_DESIGN.md`).
+
+**Semantik `is_active`.** Ini adalah mekanisme *revocation* utama: `is_active = false` membuat akun ditolak pada request berikutnya, tanpa menunggu token JWT (masa berlaku 8 jam) kedaluwarsa, dan tanpa memerlukan *token blacklist*. Peran (`role`) dan status (`is_active`) selalu dibaca ulang dari baris `User` di database pada setiap request — **tidak pernah** dipercaya dari klaim token.
+
+**Provisioning akun pertama.** Tabel `users` kosong pada instalasi baru — sesuai desain, sistem terkunci sepenuhnya (*deny-by-default* tanpa akun berarti tidak ada yang bisa login). Akun ADMIN pertama dibuat melalui `backend/scripts/create_admin.py`, sebuah CLI interaktif (lihat Bagian 29.1 langkah 5 dan Bagian 29.2 langkah 6). Skrip ini **bukan** migrasi dan **bukan** proses startup aplikasi — keduanya akan menanam kredensial yang dikenal (*known credential*) di setiap deployment. Skrip menolak dijalankan terhadap database PoC stabil `lis_marina_permata` (Bagian 29.4).
+
+**Cakupan yang sengaja tidak termasuk.** Atribusi pengguna pada mutasi workflow klinis (kolom `id_user` pada `test_runs` atau tabel audit terpisah) **belum** ditambahkan oleh migrasi ini — itu adalah cakupan M9.1b (`07_TASK_LIST.md`), migrasi terpisah di masa depan.

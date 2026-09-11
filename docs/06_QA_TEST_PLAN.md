@@ -858,6 +858,8 @@ Client mencoba mengubah `is_final`.
 
 API menolak request.
 
+**Evidence (M9.1a, automated):** `POST /api/test-runs/{id}/finalize` (dan `unfinalize`, `delivery/start`, `delivery/success`, `delivery/fail`, `sync-simrs`) menolak pemanggil anonim dengan `401` — `backend/tests/api/test_auth_security.py::test_phi_and_mutation_endpoints_reject_anonymous_calls` (parametrized). Pemanggil dengan role yang salah (bukan ANALYST/ADMIN) ditolak `403` oleh `require_role(...)` di `app/api/routers/test_runs.py`.
+
 ---
 
 ## TC-API-03 — Clinical Result Modification Prevention
@@ -1043,6 +1045,8 @@ Client mencoba mengakses historical result.
 
 API menolak request.
 
+**Evidence (M9.1a, automated):** `GET /api/patients/{nomor_rm}/history` kini memerlukan autentikasi JWT Bearer yang sama dengan seluruh endpoint `/api` lainnya (*deny-by-default*) — `backend/tests/api/test_auth_security.py::test_phi_and_mutation_endpoints_reject_anonymous_calls`. **Catatan cakupan:** ini adalah autentikasi standar aplikasi, bukan mekanisme *service principal* khusus SIMRS — autentikasi *inbound* SIMRS tetap belum ditentukan (OD-S3, `M9.1a_SECURITY_FOUNDATION_DESIGN.md`).
+
 ---
 
 # 15. Concurrency Testing
@@ -1126,6 +1130,8 @@ Integration Service harus dapat kembali terhubung setelah mekanisme recovery ber
 
 API yang memerlukan authentication tidak dapat diakses tanpa credential yang valid.
 
+**Evidence (M9.1a, automated):** deny-by-default pada seluruh `/api` (JWT Bearer, HS256, 8 jam, tanpa refresh) — regresi enumerasi rute memverifikasi setiap rute di `app.routes`, kecuali allowlist eksplisit (`GET /health`, `POST /api/auth/login`), membawa dependency autentikasi: `backend/tests/api/test_route_allowlist.py`. Kasus token: hilang, malformed, wrong-signature, `alg=none`, kedaluwarsa, dan `sub` yang tidak dikenal — seluruhnya `401` (`backend/tests/api/test_auth_security.py`). Peran (`role`) dan status aktif (`is_active`) dibaca ulang dari baris `User` di database pada setiap request, bukan dari klaim token — dibuktikan oleh regresi klaim `role` palsu (`test_forged_admin_role_claim_does_not_grant_admin_access`) dan revocation setelah nonaktivasi (`test_disabling_user_revokes_access_on_next_request`).
+
 ---
 
 ## TC-SEC-02 — Unauthorized Clinical Data Modification
@@ -1138,6 +1144,8 @@ Delete Result
 Modify Test Run Clinical Data
 ```
 
+**Evidence:** tidak ada endpoint, pada peran manapun, yang memodifikasi `nilai_hasil` / `satuan` / `flag_abnormalitas` — properti ini bersifat arsitektural dan tidak berubah oleh M9.1a. M9.1a menambahkan lapisan RBAC di atasnya: keenam endpoint mutasi workflow (`finalize`, `unfinalize`, `delivery/*`, `sync-simrs`) memerlukan peran ANALYST atau ADMIN yang terautentikasi (`backend/tests/api/test_auth_security.py`).
+
 ---
 
 ## TC-SEC-03 — Patient Data Exposure
@@ -1145,6 +1153,8 @@ Modify Test Run Clinical Data
 API hanya mengembalikan data pasien sesuai scope dan authorization request.
 
 Data pasien tidak boleh terekspos melalui endpoint yang tidak memerlukan akses tersebut.
+
+**Evidence (M9.1a, automated):** `GET /api/results`, `GET /api/patients/{nomor_rm}/history`, `GET /api/instruments/{id}/orders`, dan `GET /api/orders/{order_id}/test-runs` — seluruh endpoint yang mengembalikan PHI — menolak pemanggil anonim (`401`), diverifikasi oleh `backend/tests/api/test_auth_security.py::test_phi_and_mutation_endpoints_reject_anonymous_calls` dan regresi allowlist di `backend/tests/api/test_route_allowlist.py`.
 
 ---
 
@@ -1295,3 +1305,40 @@ SIMRS Delivery
 ```
 
 Setiap tahap harus memiliki mekanisme untuk mendeteksi error, mempertahankan data yang telah berhasil disimpan, dan menyediakan traceability yang cukup untuk investigasi.
+
+---
+
+# 23. M9.1a Security Verification Evidence
+
+Bagian ini mencatat bukti verifikasi aktual untuk M9.1a (Security Foundation), dieksekusi terhadap commit `b0b9ee7`. Ini melengkapi — bukan menggantikan — evidence per-test-case yang sudah dicatat pada TC-SEC-01/02/03 (§17) dan TC-HIST-03 (§14) di atas.
+
+**Hasil eksekusi:**
+
+| Pemeriksaan | Hasil |
+|---|---|
+| Backend test suite (`pytest`) | **294 passed** |
+| Migration-chain suite (`backend/tests/test_migration_chain.py`) | **13 passed** |
+| Frontend `tsc -b` | pass |
+| Frontend `vite build` | pass |
+| Independent security review | 0 BLOCKER, 0 HIGH; temuan lain diterima/dideferensikan, bukan diabaikan |
+
+**Cakupan test tambahan** (di luar TC-SEC-01/02/03 dan TC-HIST-03, yang sudah diberi evidence di tempatnya masing-masing):
+
+- **Login & password:** kredensial valid/invalid, username tidak dikenal, akun nonaktif — seluruhnya `401` dengan pesan generik yang sama (tidak ada *enumeration oracle*); delay ~1 detik pada login gagal, tanpa lockout akun (OD-S5) — `backend/tests/api/test_auth_security.py`.
+- **Validasi JWT:** token hilang, malformed, wrong-signature, `alg=none`, kedaluwarsa, `sub` tidak dikenal — seluruhnya `401` — `test_auth_security.py`.
+- **Role dari baris database, bukan klaim token:** klaim `role` palsu di dalam JWT tidak memberikan akses ADMIN (`test_forged_admin_role_claim_does_not_grant_admin_access`); ADMIN mewarisi kapabilitas ANALYST (OD-1 = Option B); ANALYST ditolak `403` pada endpoint manajemen pengguna.
+- **Revocation:** menonaktifkan (`is_active = false`) sebuah akun langsung menolak token yang sebelumnya valid pada request berikutnya, tanpa menunggu masa berlaku token — `test_disabling_user_revokes_access_on_next_request`.
+- **Regresi enumerasi rute (deny-by-default):** setiap rute di `app.routes`, selain `GET /health` dan `POST /api/auth/login`, wajib membawa dependency autentikasi — `backend/tests/api/test_route_allowlist.py`.
+- **CORS:** origin yang diizinkan mendapat header `Access-Control-Allow-Origin`; origin yang tidak diizinkan tidak mendapat header apapun; `allow_credentials` tidak pernah `true`; tidak ada konfigurasi wildcard — `test_route_allowlist.py`.
+- **Dokumentasi API dinonaktifkan pada produksi:** `/docs`, `/redoc`, `/openapi.json` tidak ada pada `ENVIRONMENT=production`, tetap ada pada `development` — `test_route_allowlist.py`.
+- **Password policy & hash:** Argon2id (`argon2-cffi`), panjang minimum, tidak pernah dikembalikan atau dicatat dalam response — `test_auth_security.py`.
+- **Self-service password change (OD-S4):** memerlukan password saat ini yang benar; password baru divalidasi terhadap policy; hash diperbarui — `test_auth_security.py`.
+- **Keamanan `JWT_SECRET_KEY`:** menolak nilai kosong, placeholder `.env.example`, nilai lemah yang diketahui (termasuk yang di-*pad* untuk melewati batas panjang), dan nilai yang terlalu pendek — `backend/tests/test_config_security.py`.
+- **Admin safety:** seorang ADMIN tidak dapat menonaktifkan akunnya sendiri; ADMIN aktif terakhir tidak dapat dinonaktifkan — `test_auth_security.py`.
+- **Bootstrap admin pertama:** `create_admin_user`/`abort_if_stable_poc` — menolak dijalankan terhadap database PoC stabil, menolak ADMIN kedua tanpa `--force`, menolak username duplikat, menegakkan password policy — `backend/tests/test_create_admin.py`.
+- **Migration safety:** tabel `users` diverifikasi pada database sekali-pakai (jumlah tabel/constraint/index diukur dari output migrasi sesungguhnya, bukan diestimasi); `downgrade` menghapus `users` dengan bersih dan `upgrade` ulang bersifat idempotent — `backend/tests/test_migration_chain.py`.
+- **Stable PoC safety:** `lis_marina_permata` tidak pernah dihubungi oleh implementasi maupun test suite-nya.
+
+**Yang secara eksplisit TIDAK dieksekusi:** pengujian manual/UI runtime pada frontend (login form, session, logout melalui browser sungguhan) tidak dilakukan sebagai bagian dari verifikasi ini — hanya `tsc -b` dan `vite build` yang dijalankan. Checklist manual pada `M9.1a_SECURITY_FOUNDATION_DESIGN.md` §17 ("Frontend (manual until M9.4 item 5)") tetap belum dieksekusi dan tetap menjadi gap QA yang tercatat, bukan diklaim selesai.
+
+**Tidak tercakup oleh M9.1a, sengaja:** atribusi pengguna pada mutasi workflow (M9.1b — lihat `07_TASK_LIST.md`); autentikasi *inbound* SIMRS (OD-S3, tetap eksternal/dideferensikan); TLS/HTTPS (OD-S6, tetap terbuka).
