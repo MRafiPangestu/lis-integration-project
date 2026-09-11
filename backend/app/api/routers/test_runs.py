@@ -5,6 +5,7 @@ from sqlalchemy.exc import OperationalError
 from typing import List
 
 from app.core.database import get_db
+from app.core.security import Role, require_role
 from app.schemas.test_run import TestRunResponse
 from app.services.test_run_service import TestRunService
 from app.models.test_run import TestRun
@@ -15,37 +16,45 @@ from app.integration.simrs_payload import build_simrs_payload
 
 router = APIRouter()
 
+# The six clinical workflow mutations. Under OD-1 = Option B every
+# authenticated role passes this check today (ADMIN inherits ANALYST); it is
+# kept explicit — rather than relying on "any authenticated user" — so that
+# a future Option A, or a future third role, is a one-line change here and
+# not a redesign (design §7.3).
+_clinical_write = Depends(require_role(Role.ANALYST, Role.ADMIN))
+
+
 @router.get("/orders/{order_id}/test-runs", response_model=List[TestRunResponse])
 def get_order_test_runs(order_id: int, db: Session = Depends(get_db)):
     """Retrieve all historical TestRuns for a specific Order along with their Results."""
     return TestRunService.get_runs_by_order(db, order_id)
 
-@router.post("/test-runs/{run_id}/finalize", response_model=TestRunResponse)
+@router.post("/test-runs/{run_id}/finalize", response_model=TestRunResponse, dependencies=[_clinical_write])
 def finalize_test_run(run_id: int, db: Session = Depends(get_db)):
     """Set a TestRun as final for clinical validation."""
     return TestRunService.finalize_run(db, run_id)
 
-@router.post("/test-runs/{run_id}/unfinalize", response_model=TestRunResponse)
+@router.post("/test-runs/{run_id}/unfinalize", response_model=TestRunResponse, dependencies=[_clinical_write])
 def unfinalize_test_run(run_id: int, db: Session = Depends(get_db)):
     """Unset the final state of a TestRun to allow another run to be finalized."""
     return TestRunService.unfinalize_run(db, run_id)
 
-@router.post("/test-runs/{run_id}/delivery/start", response_model=TestRunResponse)
+@router.post("/test-runs/{run_id}/delivery/start", response_model=TestRunResponse, dependencies=[_clinical_write])
 def start_test_run_delivery(run_id: int, db: Session = Depends(get_db)):
     """Start the delivery process for a final TestRun."""
     return TestRunService.start_delivery(db, run_id)
 
-@router.post("/test-runs/{run_id}/delivery/success", response_model=TestRunResponse)
+@router.post("/test-runs/{run_id}/delivery/success", response_model=TestRunResponse, dependencies=[_clinical_write])
 def mark_test_run_delivery_success(run_id: int, db: Session = Depends(get_db)):
     """Mark a TestRun as successfully delivered."""
     return TestRunService.mark_delivery_delivered(db, run_id)
 
-@router.post("/test-runs/{run_id}/delivery/fail", response_model=TestRunResponse)
+@router.post("/test-runs/{run_id}/delivery/fail", response_model=TestRunResponse, dependencies=[_clinical_write])
 def mark_test_run_delivery_fail(run_id: int, db: Session = Depends(get_db)):
     """Mark a TestRun delivery as failed."""
     return TestRunService.mark_delivery_failed(db, run_id)
 
-@router.post("/test-runs/{run_id}/sync-simrs")
+@router.post("/test-runs/{run_id}/sync-simrs", dependencies=[_clinical_write])
 def sync_simrs(run_id: int, db: Session = Depends(get_db)):
     """Synchronize a final Test Run to SIMRS safely."""
     # Phase 1: Database Claim (Atomic)

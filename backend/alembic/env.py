@@ -11,7 +11,7 @@ from alembic import context
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # ── Import models so that Base.metadata is fully populated ────────────────────
-# All 11 models must be imported before autogenerate can detect them.
+# All 12 models must be imported before autogenerate can detect them.
 from app.models import Base  # noqa: F401 — registers all models via __init__.py
 from app.core.config import settings
 

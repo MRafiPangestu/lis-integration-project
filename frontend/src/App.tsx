@@ -5,12 +5,27 @@ import { OrderDetailView } from "./components/detail/OrderDetailView";
 import { OrderOverviewView } from "./components/overview/OrderOverviewView";
 import type { OverviewDetailTarget } from "./components/overview/OrderOverviewView";
 import { todayRange } from "./components/overview/dateRange";
+import { useAuth } from "./components/auth/AuthProvider";
+import { LoginView } from "./components/auth/LoginView";
 import { EmptyState } from "./components/status/EmptyState";
 import { ErrorState } from "./components/status/ErrorState";
 import { LoadingState } from "./components/status/LoadingState";
 import { useInstruments } from "./hooks/useInstruments";
 
 function App() {
+  const { isAuthenticated } = useAuth();
+
+  // Gate, not a route (M9.1a design §12.2) — the same pattern App already
+  // uses to switch between detail / search / overview views.
+  if (!isAuthenticated) {
+    return <LoginView />;
+  }
+
+  return <AuthenticatedApp />;
+}
+
+function AuthenticatedApp() {
+  const { user, logout } = useAuth();
   const instruments = useInstruments();
 
   const [activeInstrumentId, setActiveInstrumentId] = useState<number | null>(null);
@@ -134,6 +149,8 @@ function App() {
       activeInstrument={activeInstrument}
       sidebarExpanded={sidebarExpanded}
       onToggleSidebar={() => setSidebarExpanded((open) => !open)}
+      user={user}
+      onLogout={logout}
     >
       {view}
     </AppShell>

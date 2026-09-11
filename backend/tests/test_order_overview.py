@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.main import app
 from app.models import Instrument, Order, Patient, Result, TestRun, Visit
@@ -53,14 +54,27 @@ def session():
         s.close()
 
 
+class _StubAnalystUser:
+    """M9.1a bypass — this module tests overview query logic, not
+    authentication. See tests/api/test_auth_security.py for real auth
+    coverage."""
+
+    id_user = 0
+    username = "test-analyst"
+    role = "ANALYST"
+    is_active = True
+
+
 @pytest.fixture
 def client(session):
     def _override():
         yield session
 
     app.dependency_overrides[get_db] = _override
+    app.dependency_overrides[get_current_user] = lambda: _StubAnalystUser()
     yield TestClient(app)
     app.dependency_overrides.pop(get_db, None)
+    app.dependency_overrides.pop(get_current_user, None)
 
 
 # --- builders -----------------------------------------------------------

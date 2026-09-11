@@ -8,3 +8,7 @@ python-dotenv==1.1.0
 alembic==1.15.2
 httpx==0.28.1
 
+# M9.1a Security Foundation
+argon2-cffi==25.1.0
+PyJWT==2.10.1
+
