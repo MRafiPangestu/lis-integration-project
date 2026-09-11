@@ -126,3 +126,22 @@ export interface PaginatedOrderOverviewResponse {
   page_size: number
   total: number
 }
+
+// M9.1a — mirrors app/schemas/auth.py exactly. Never carries password_hash.
+export type UserRole = "ANALYST" | "ADMIN"
+
+export interface UserPublic {
+  id_user: number
+  username: string
+  nama_lengkap: string
+  role: UserRole
+  is_active: boolean
+  created_at: string
+  last_login_at: string | null
+}
+
+export interface LoginResponse {
+  access_token: string
+  token_type: string
+  user: UserPublic
+}

@@ -1,12 +1,14 @@
 import type { ReactNode } from "react";
 import { Header } from "./Header";
-import type { InstrumentStatusResponse } from "../../types/api";
+import type { InstrumentStatusResponse, UserPublic } from "../../types/api";
 
 export interface AppShellProps {
   sidebar: ReactNode;
   activeInstrument?: InstrumentStatusResponse | null;
   sidebarExpanded?: boolean;
   onToggleSidebar?: () => void;
+  user?: UserPublic | null;
+  onLogout?: () => void;
   children: ReactNode;
 }
 
@@ -18,6 +20,8 @@ export function AppShell({
   activeInstrument,
   sidebarExpanded,
   onToggleSidebar,
+  user,
+  onLogout,
   children,
 }: AppShellProps) {
   return (
@@ -28,6 +32,8 @@ export function AppShell({
           activeInstrument={activeInstrument}
           sidebarExpanded={sidebarExpanded}
           onToggleSidebar={onToggleSidebar}
+          user={user}
+          onLogout={onLogout}
         />
         <main className="main-content">{children}</main>
       </div>

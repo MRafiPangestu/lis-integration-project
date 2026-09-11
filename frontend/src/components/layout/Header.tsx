@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
-import type { InstrumentStatusResponse } from "../../types/api";
+import type { InstrumentStatusResponse, UserPublic } from "../../types/api";
 
 export interface HeaderProps {
   activeInstrument?: InstrumentStatusResponse | null;
   sidebarExpanded?: boolean;
   onToggleSidebar?: () => void;
+  user?: UserPublic | null;
+  onLogout?: () => void;
 }
 
 type HeaderLayout = "wide" | "mid" | "narrow";
@@ -89,7 +91,13 @@ const toggleGlyph = (
   </svg>
 );
 
-export function Header({ activeInstrument, sidebarExpanded, onToggleSidebar }: HeaderProps) {
+export function Header({
+  activeInstrument,
+  sidebarExpanded,
+  onToggleSidebar,
+  user,
+  onLogout,
+}: HeaderProps) {
   const layout = useHeaderLayout();
   const showMetadata = layout !== "narrow";
   const showToggle = Boolean(onToggleSidebar) && layout !== "narrow";
@@ -177,6 +185,38 @@ export function Header({ activeInstrument, sidebarExpanded, onToggleSidebar }: H
               Last status: {formatStatusTime(activeInstrument.last_status_at)}
             </div>
           ) : null}
+        </div>
+      ) : null}
+
+      {user ? (
+        <div
+          style={{
+            alignItems: "center",
+            display: "flex",
+            flexShrink: 0,
+            gap: "var(--space-3)",
+            marginLeft: "var(--space-4)",
+          }}
+        >
+          {showMetadata ? (
+            <span
+              style={{
+                color: "var(--color-text-secondary)",
+                fontSize: "0.75rem",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {user.nama_lengkap}
+            </span>
+          ) : null}
+          <button
+            className="lis-btn lis-btn--secondary"
+            onClick={onLogout}
+            style={{ height: 32, padding: "0 var(--space-3)" }}
+            type="button"
+          >
+            Sign out
+          </button>
         </div>
       ) : null}
     </header>

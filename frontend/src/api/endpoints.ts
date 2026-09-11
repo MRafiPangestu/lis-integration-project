@@ -2,10 +2,15 @@ import { apiClient } from "./client"
 import type {
   HistoryPatientResponse,
   InstrumentStatusResponse,
+  LoginResponse,
   PaginatedOrderOverviewResponse,
   PaginatedResultResponse,
   TestRunResponse,
 } from "../types/api"
+
+export function login(username: string, password: string): Promise<LoginResponse> {
+  return apiClient.post<LoginResponse>("/api/auth/login", { username, password })
+}
 
 export interface ResultsQueryParams {
   page?: number

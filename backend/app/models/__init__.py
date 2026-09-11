@@ -10,6 +10,7 @@ from app.models.order import Order
 from app.models.instrument_message import InstrumentMessage
 from app.models.test_run import TestRun
 from app.models.result import Result
+from app.models.user import User
 
 __all__ = [
     "Base",
@@ -24,5 +25,6 @@ __all__ = [
     "InstrumentMessage",
     "TestRun",
     "Result",
+    "User",
 ]
 
