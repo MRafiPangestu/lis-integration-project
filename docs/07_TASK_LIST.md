@@ -78,11 +78,11 @@ If any criterion lacks evidence, the milestone is **IMPLEMENTED**, not COMPLETE.
 
 ## Owner Decisions Outstanding
 
-Recorded here so they are visible rather than silently assumed. None is treated as decided.
+Recorded here so they are visible rather than silently assumed. Entries marked **Resolved** have received an owner decision; the rest have not.
 
 | ID | Decision | Current position |
 |---|---|---|
-| **OD-1** | RBAC model: Option A (ANALYST clinical / ADMIN system-only) vs Option B (ADMIN inherits ANALYST plus system and user management) | **Option B is the recommendation, not an owner decision.** If B is selected, M9.1b audit attribution becomes mandatory |
+| **OD-1** | RBAC model: Option A (ANALYST clinical / ADMIN system-only) vs Option B (ADMIN inherits ANALYST plus system and user management) | **Resolved — Option B, owner-approved.** ADMIN inherits all ANALYST capabilities plus user management (`docs/M9.1a_SECURITY_FOUNDATION_DESIGN.md`, Governance Update). Consequence: **M9.1b audit attribution is now mandatory** — role no longer distinguishes the acting user, so actor attribution for workflow mutations must use `id_user` / authenticated actor identity. M9.1a implementation has not started |
 | **OD-2** | M9.0 database baseline strategy | **Resolved.** M9.0 Phase 1 (`d335bc4`) selected the evidence-derived historical baseline (Option A′ / investigation OD-B), not a squashed final-schema baseline; Phase 2 (`d273e7f`) implemented it as root revision `8e973e84a9d7` (R0). The legacy schema was captured from `lis_marina_permata` (`1c14380`) and deterministically canonicalised (`f16081f`), not reconstructed |
 | **OD-3** | `M8.6_Investigation.md` O8 — should MRN search remain reachable from the detail screen? | The document's recommended default ("no") was applied during implementation. **Owner confirmation outstanding** |
 | **OD-4** | Target interim release posture | **Posture 1 is the recommendation, not an approved decision.** See Release Gates |
@@ -705,7 +705,7 @@ Every API endpoint is currently unauthenticated, including the Final Run and SIM
 - [ ] Login / logout and authenticated-client integration in the frontend
 - [ ] Tests: login success and failure, missing / invalid / expired token, wrong role, authorised role, and a check that no endpoint outside an explicit public allowlist is reachable anonymously
 
-> **RBAC direction.** Option B (ADMIN inherits all ANALYST permissions plus system and user management) is the **recommendation** recorded under **OD-1**. It is **not an owner decision** and must not be implemented as settled until confirmed. `02_PRD.md` §3 defines one human actor (Laboratory Analyst); `03_SYSTEM_DESIGN.md` §11.2 presents its two-role tree explicitly as an example ("Contoh:") and states that actual rights are adjustable.
+> **RBAC direction — OD-1 RESOLVED.** Option B (ADMIN inherits all ANALYST permissions plus system and user management) is **owner-approved** (`docs/M9.1a_SECURITY_FOUNDATION_DESIGN.md`, Governance Update, 2026-09-11) — no longer merely a recommendation. `02_PRD.md` §3 defines one human actor (Laboratory Analyst); `03_SYSTEM_DESIGN.md` §11.2 presents its two-role tree explicitly as an example ("Contoh:") and states that actual rights are adjustable, so Option B does not conflict with either. **This resolves the governance blocker on M9.1a implementation; implementation itself has not started.**
 
 **Dependencies:** M9.0 (its `users` migration should land on a reconciled chain). **Release impact:** gate in every posture.
 
@@ -717,7 +717,7 @@ Every API endpoint is currently unauthenticated, including the Final Run and SIM
 - [ ] Schema change to carry the attribution, with its migration
 - [ ] Tests asserting attribution is recorded and is not spoofable by the caller
 
-> **Especially required if OD-1 resolves to Option B**, since role would then no longer distinguish who performed a clinical workflow action; attribution becomes the only remaining control satisfying NFR-08.
+> **Required — OD-1 is resolved to Option B**, so role no longer distinguishes who performed a clinical workflow action; attribution is now the only remaining control satisfying NFR-08. M9.1b remains NOT STARTED.
 
 **Dependencies:** M9.1a. **Release impact:** gate in every posture.
 
@@ -973,7 +973,7 @@ Status vocabulary and the completion rule are defined at the top of this documen
 | M8.5 — Enterprise Dashboard Integration | ✅ COMPLETE | Tier-2 tests deferred by permitted fallback → M9.4 |
 | M8.6 — Frontend Visual Polish | ✅ COMPLETE | F3 behavioural note; O8 unconfirmed (OD-3) |
 | M9.0 — Deployment & Migration Foundation | ✅ COMPLETE | Root migration R0 `8e973e84a9d7` implemented + validated (`d273e7f`); automated migration-chain test added (`b7c3d0e`); provisioning documentation completed (`ffb81f9`); one root, one head; OD-2 resolved (Option A′). F-2 (`nomor_rm` UNIQUE), F-3 (M8.4 index drift) and the M1 downgrade defect remain separate follow-ups. Gate in every posture |
-| M9.1a — Security Foundation | ⬜ NOT STARTED | Gate in every posture; RBAC option undecided (OD-1) |
+| M9.1a — Security Foundation | ⬜ NOT STARTED | Gate in every posture; OD-1 RESOLVED (Option B, owner-approved) — governance blocker lifted, implementation not started |
 | M9.1b — Audit Attribution | ⬜ NOT STARTED | Gate in every posture; NFR-08 |
 | M9.2 — Deduplication Refinement | ⛔ BLOCKED | Physical evidence only; guard now **reachable** under the BC-5150 high-risk policy — no longer blocked by the absence of a patient path |
 | M9.3a — Fail-Closed Classification, Validated | ✅ COMPLETE | Behaviour from `38a40fb`; verification added by `28ad9b3`. Deployed BC-5150 policy is now `bc5150_name_passthrough` |
