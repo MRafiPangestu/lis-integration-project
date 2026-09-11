@@ -82,7 +82,7 @@ Recorded here so they are visible rather than silently assumed. Entries marked *
 
 | ID | Decision | Current position |
 |---|---|---|
-| **OD-1** | RBAC model: Option A (ANALYST clinical / ADMIN system-only) vs Option B (ADMIN inherits ANALYST plus system and user management) | **Resolved — Option B, owner-approved.** ADMIN inherits all ANALYST capabilities plus user management (`docs/M9.1a_SECURITY_FOUNDATION_DESIGN.md`, Governance Update). Consequence: **M9.1b audit attribution is now mandatory** — role no longer distinguishes the acting user, so actor attribution for workflow mutations must use `id_user` / authenticated actor identity. M9.1a implementation has not started |
+| **OD-1** | RBAC model: Option A (ANALYST clinical / ADMIN system-only) vs Option B (ADMIN inherits ANALYST plus system and user management) | **Resolved — Option B, owner-approved.** ADMIN inherits all ANALYST capabilities plus user management (`docs/M9.1a_SECURITY_FOUNDATION_DESIGN.md`, Governance Update). Consequence: **M9.1b audit attribution is now mandatory** — role no longer distinguishes the acting user, so actor attribution for workflow mutations must use `id_user` / authenticated actor identity. **M9.1a implementation is complete** (`b0b9ee7`); M9.1b itself remains NOT STARTED |
 | **OD-2** | M9.0 database baseline strategy | **Resolved.** M9.0 Phase 1 (`d335bc4`) selected the evidence-derived historical baseline (Option A′ / investigation OD-B), not a squashed final-schema baseline; Phase 2 (`d273e7f`) implemented it as root revision `8e973e84a9d7` (R0). The legacy schema was captured from `lis_marina_permata` (`1c14380`) and deterministically canonicalised (`f16081f`), not reconstructed |
 | **OD-3** | `M8.6_Investigation.md` O8 — should MRN search remain reachable from the detail screen? | The document's recommended default ("no") was applied during implementation. **Owner confirmation outstanding** |
 | **OD-4** | Target interim release posture | **Posture 1 is the recommendation, not an approved decision.** See Release Gates |
@@ -692,22 +692,28 @@ The migration chain was not self-sufficient from an empty database (see M1's Kno
 
 **Dependencies:** none. **Release impact:** gate in every posture. **External blockers:** none.
 
-### M9.1a — Security Foundation — **NOT STARTED**
+### M9.1a — Security Foundation — **COMPLETE**
 
-Every API endpoint is currently unauthenticated, including the Final Run and SIMRS actions. Basis: `02_PRD.md` NFR-09 and AC-12; `03_SYSTEM_DESIGN.md` §11; `06_QA_TEST_PLAN.md` TC-SEC-01, TC-SEC-03, TC-HIST-03.
+Every API endpoint was unauthenticated, including the Final Run and SIMRS actions. Basis: `02_PRD.md` NFR-09 and AC-12; `03_SYSTEM_DESIGN.md` §11; `06_QA_TEST_PLAN.md` TC-SEC-01, TC-SEC-03, TC-HIST-03.
 
-- [ ] Authentication mechanism (JWT or equivalent), with explicit and configurable token lifetime
-- [ ] Password storage using a modern hashing scheme; never plaintext
-- [ ] Define roles and represent them explicitly rather than as scattered string checks
-- [ ] Protect API endpoints by role; deny by default
-- [ ] Protect Final Run, unfinalize, delivery transitions and SIMRS sync from anonymous callers
-- [ ] Restrict CORS for production *(moved here from the former M9.5 list — CORS configuration is inseparable from the authentication model)*
-- [ ] Login / logout and authenticated-client integration in the frontend
-- [ ] Tests: login success and failure, missing / invalid / expired token, wrong role, authorised role, and a check that no endpoint outside an explicit public allowlist is reachable anonymously
+**Completed (`b0b9ee7` — `feat(m9.1a): implement security foundation`), built on the decisions recorded under OD-1/OD-S1–OD-S6 above and in `docs/M9.1a_SECURITY_FOUNDATION_DESIGN.md`.** JWT Bearer authentication (HS256, 8h lifetime, no refresh token, claims limited to `sub`/`iat`/`exp`); Argon2id password hashing; deny-by-default `/api` mount with an explicit public allowlist (`GET /health`, `POST /api/auth/login`); `Role` enum (`ANALYST`, `ADMIN`) plus a `require_role` dependency factory; OD-1 Option B — ADMIN inherits every ANALYST capability plus user management; restrictive CORS (explicit origin allowlist, `allow_credentials=false`, no wildcard); `/docs`/`/redoc`/`/openapi.json` disabled when `ENVIRONMENT=production`; frontend `AuthProvider`/`LoginView` with `sessionStorage` and centralized Bearer attachment/401 handling in `client.ts`. An independent security review found **0 BLOCKER / 0 HIGH** findings; two hardening fixes were folded in before merge (`JWT_SECRET_KEY` minimum-strength validation; an admin cannot disable itself or the last active ADMIN). Remaining findings are accepted or deferred, not dropped — see the design doc's Implementation & Verification Record.
 
-> **RBAC direction — OD-1 RESOLVED.** Option B (ADMIN inherits all ANALYST permissions plus system and user management) is **owner-approved** (`docs/M9.1a_SECURITY_FOUNDATION_DESIGN.md`, Governance Update, 2026-09-11) — no longer merely a recommendation. `02_PRD.md` §3 defines one human actor (Laboratory Analyst); `03_SYSTEM_DESIGN.md` §11.2 presents its two-role tree explicitly as an example ("Contoh:") and states that actual rights are adjustable, so Option B does not conflict with either. **This resolves the governance blocker on M9.1a implementation; implementation itself has not started.**
+**Acceptance Criteria Evidenced.** All eight of this milestone's own criteria are met: (1) authentication mechanism with configurable lifetime — **E1:** `backend/tests/api/test_auth_security.py` (login/token tests), **E2:** `app/core/security.py`, `ACCESS_TOKEN_EXPIRE_MINUTES`; (2) modern password hashing, never plaintext — **E1:** `test_auth_security.py` Argon2id round-trip, **E2:** `app/core/security.py:hash_password`; (3) roles represented explicitly, not scattered string checks — **E2:** `Role(str, Enum)` + `require_role(...)` in `app/core/security.py`; (4) endpoints protected by role, deny by default — **E1:** `backend/tests/api/test_route_allowlist.py` (route-enumeration regression over every route in `app.routes`); (5) Final Run / unfinalize / delivery / sync-simrs protected from anonymous callers — **E1:** `test_auth_security.py::test_phi_and_mutation_endpoints_reject_anonymous_calls` (parametrized over all six); (6) CORS restricted for production — **E1:** `test_route_allowlist.py` (allowed/disallowed origin, no wildcard, no credentialed header); (7) login/logout and authenticated-client integration in the frontend — **E2:** `frontend/src/components/auth/{AuthProvider,LoginView}.tsx`, `frontend/src/api/client.ts`; `tsc -b` and `vite build` both pass (no frontend test tooling exists yet — M9.4 item 5); (8) the required test set itself — **E1:** `test_auth_security.py`, `test_route_allowlist.py`, plus `backend/tests/test_config_security.py` (JWT secret strength) and `backend/tests/test_create_admin.py` (bootstrap safety), none of which were required bullets but all of which harden the same surface. Full backend suite: **294 passed.** Migration-chain suite: **13 passed** (`backend/tests/test_migration_chain.py`, extended for the `users` table — see M9.0's evidence class for the same test file).
 
-**Dependencies:** M9.0 (its `users` migration should land on a reconciled chain). **Release impact:** gate in every posture.
+- [x] Authentication mechanism (JWT or equivalent), with explicit and configurable token lifetime
+- [x] Password storage using a modern hashing scheme; never plaintext
+- [x] Define roles and represent them explicitly rather than as scattered string checks
+- [x] Protect API endpoints by role; deny by default
+- [x] Protect Final Run, unfinalize, delivery transitions and SIMRS sync from anonymous callers
+- [x] Restrict CORS for production *(moved here from the former M9.5 list — CORS configuration is inseparable from the authentication model)*
+- [x] Login / logout and authenticated-client integration in the frontend
+- [x] Tests: login success and failure, missing / invalid / expired token, wrong role, authorised role, and a check that no endpoint outside an explicit public allowlist is reachable anonymously
+
+> **RBAC direction — OD-1 RESOLVED AND IMPLEMENTED.** Option B (ADMIN inherits all ANALYST permissions plus system and user management) is **owner-approved** (`docs/M9.1a_SECURITY_FOUNDATION_DESIGN.md`, Governance Update) and is now the implemented behaviour (`app/core/security.py:Role`, `app/api/routers/users.py`). `02_PRD.md` §3 defines one human actor (Laboratory Analyst); `03_SYSTEM_DESIGN.md` §11.2 presents its two-role tree explicitly as an example ("Contoh:") and states that actual rights are adjustable, so Option B does not conflict with either.
+
+**Not delivered by M9.1a, deliberately:** M9.1b actor attribution (below); OD-S3 SIMRS inbound service-principal design (remains deferred/external); OD-S6 TLS/HTTPS (remains open); token invalidation on password change; frontend UI for admin user management or self-service password change (the backend endpoints exist and are tested, but only login/session/logout got a frontend surface).
+
+**Dependencies:** M9.0 (its `users` migration landed on the reconciled chain — revision `27e00bcff992`, `down_revision = 4aff9e134f16`). **Release impact:** gate in every posture.
 
 ### M9.1b — Audit Attribution — **NOT STARTED**
 
@@ -973,8 +979,8 @@ Status vocabulary and the completion rule are defined at the top of this documen
 | M8.5 — Enterprise Dashboard Integration | ✅ COMPLETE | Tier-2 tests deferred by permitted fallback → M9.4 |
 | M8.6 — Frontend Visual Polish | ✅ COMPLETE | F3 behavioural note; O8 unconfirmed (OD-3) |
 | M9.0 — Deployment & Migration Foundation | ✅ COMPLETE | Root migration R0 `8e973e84a9d7` implemented + validated (`d273e7f`); automated migration-chain test added (`b7c3d0e`); provisioning documentation completed (`ffb81f9`); one root, one head; OD-2 resolved (Option A′). F-2 (`nomor_rm` UNIQUE), F-3 (M8.4 index drift) and the M1 downgrade defect remain separate follow-ups. Gate in every posture |
-| M9.1a — Security Foundation | ⬜ NOT STARTED | Gate in every posture; OD-1 RESOLVED (Option B, owner-approved) — governance blocker lifted, implementation not started |
-| M9.1b — Audit Attribution | ⬜ NOT STARTED | Gate in every posture; NFR-08 |
+| M9.1a — Security Foundation | ✅ COMPLETE | Implemented `b0b9ee7`; JWT Bearer (HS256, 8h, no refresh), Argon2id, deny-by-default `/api` + route-allowlist regression, OD-1 Option B roles, restrictive CORS, dev-only docs, frontend login/session. Security review 0 BLOCKER/0 HIGH (hardening folded in: JWT secret strength, last-admin lockout guard). 294 backend tests + 13 migration tests passed; `tsc -b`/`vite build` pass. OD-S3 deferred/external, OD-S6 open. Gate in every posture |
+| M9.1b — Audit Attribution | ⬜ NOT STARTED | Gate in every posture; NFR-08; now mandatory per OD-1 = Option B |
 | M9.2 — Deduplication Refinement | ⛔ BLOCKED | Physical evidence only; guard now **reachable** under the BC-5150 high-risk policy — no longer blocked by the absence of a patient path |
 | M9.3a — Fail-Closed Classification, Validated | ✅ COMPLETE | Behaviour from `38a40fb`; verification added by `28ad9b3`. Deployed BC-5150 policy is now `bc5150_name_passthrough` |
 | M9.3b — QC / Calibration Filtering | ⛔ BLOCKED | Physical evidence; evidence-based objective unmet. Interim HIGH-RISK exception active — `docs/BC5150_HIGH_RISK_DECISION.md` |
