@@ -1342,3 +1342,36 @@ Bagian ini mencatat bukti verifikasi aktual untuk M9.1a (Security Foundation), d
 **Yang secara eksplisit TIDAK dieksekusi:** pengujian manual/UI runtime pada frontend (login form, session, logout melalui browser sungguhan) tidak dilakukan sebagai bagian dari verifikasi ini — hanya `tsc -b` dan `vite build` yang dijalankan. Checklist manual pada `M9.1a_SECURITY_FOUNDATION_DESIGN.md` §17 ("Frontend (manual until M9.4 item 5)") tetap belum dieksekusi dan tetap menjadi gap QA yang tercatat, bukan diklaim selesai.
 
 **Tidak tercakup oleh M9.1a, sengaja:** atribusi pengguna pada mutasi workflow (M9.1b — lihat `07_TASK_LIST.md`); autentikasi *inbound* SIMRS (OD-S3, tetap eksternal/dideferensikan); TLS/HTTPS (OD-S6, tetap terbuka).
+
+---
+
+# 24. M9.1b Audit Attribution Verification Evidence
+
+Bagian ini mencatat bukti verifikasi aktual untuk M9.1b (Audit Attribution) — separuh *human-actor* dari NFR-08 yang belum terpenuhi setelah M9.1a. Melengkapi, bukan menggantikan, §23.
+
+**Hasil eksekusi:**
+
+| Pemeriksaan | Hasil |
+|---|---|
+| Backend test suite (`pytest`) | **334 passed** |
+| Migration-chain suite (`backend/tests/test_migration_chain.py`) | **14 passed** |
+| DEV (`lis_marina_permata_dev`) migrasi ke `28aa370f5dbe` | berhasil, diverifikasi |
+| DEV end-to-end acceptance | **15/15 langkah berhasil** |
+| Stable PoC (`lis_marina_permata`) | tidak pernah dihubungi untuk mutasi; 9 tabel, tanpa `alembic_version`/`users`/`audit_events` |
+
+**Cakupan test:**
+
+- **Audit matrix (sembilan aksi):** `TEST_RUN_FINALIZED`, `TEST_RUN_UNFINALIZED`, `DELIVERY_STARTED`, `DELIVERY_DELIVERED`, `DELIVERY_FAILED`, `USER_CREATED`, `USER_DISABLED`, `USER_REACTIVATED`, `PASSWORD_CHANGED` — setiap aksi diverifikasi untuk `id_user`, `actor_username`, `actor_role`, `entity_type`, `entity_id`, `occurred_at`, `outcome`, `state_before`, `state_after` — `backend/tests/test_test_run_service_audit.py`, `backend/tests/api/test_test_run_audit_api.py`, `backend/tests/api/test_user_management_audit_api.py`.
+- **Resistensi spoofing aktor:** klaim identitas melalui body, query string, maupun header kustom (mis. `X-User-Id`) diabaikan sepenuhnya — aktor yang tercatat selalu sama dengan pemanggil yang terautentikasi — `test_actor_cannot_be_spoofed_via_body_query_or_header` (`test_test_run_audit_api.py`), `test_actor_cannot_be_spoofed_on_user_management_endpoints` (`test_user_management_audit_api.py`).
+- **Atomisitas:** penulisan audit terjadi dalam transaksi yang sama dengan mutasi bisnis; kegagalan penulisan audit (disimulasikan melalui FK yang tidak valid / `Session.add` yang dipaksa gagal) membuat mutasi bisnis ikut *rollback*, tanpa baris audit yatim — `test_audit_insert_failure_rolls_back_finalize`, `test_create_user_audit_insert_failure_rolls_back_creation`.
+- **Riwayat transisi berulang:** finalize → unfinalize → finalize mempertahankan ketiga baris audit secara berurutan, tanpa penggabungan atau kehilangan riwayat — `test_finalize_unfinalize_finalize_preserves_all_3_audit_rows`. Permintaan *no-op* (finalize pada run yang sudah final, status update tanpa perubahan) menghasilkan **nol** baris baru — `test_noop_finalize_creates_zero_events`, `test_noop_status_update_creates_zero_audit_events`.
+- **Perilaku dua-event sync-SIMRS:** `sync-simrs` menghasilkan tepat dua baris (`DELIVERY_STARTED` lalu `DELIVERY_DELIVERED`/`DELIVERY_FAILED`) pada jalur sukses maupun gagal, dengan aktor yang identik pada keduanya; percobaan retry setelah kegagalan menghasilkan pasangan baru; dibuktikan dengan koneksi database independen bahwa commit Phase 1 sudah terlihat oleh sesi lain sebelum panggilan HTTP ke SIMRS dimulai (tidak ada transaksi terbuka yang membungkus panggilan eksternal) — `backend/tests/api/test_sync_simrs_audit_api.py`.
+- **Atribusi manajemen pengguna:** `USER_CREATED` teratribusi ke ADMIN pembuat (bukan akun baru); `USER_DISABLED`/`USER_REACTIVATED` hanya pada transisi `is_active` yang sesungguhnya; `PASSWORD_CHANGED` dengan `state_before`/`state_after` selalu `NULL` dan tanpa password/hash pada field manapun (dipindai langsung); guard *self-disable* dan *last-active-admin* M9.1a tetap berfungsi tanpa menghasilkan baris audit saat memblokir — `test_user_management_audit_api.py`.
+- **Pengecualian ingesti instrumen:** ingesti BC-5150 penuh (termasuk jalur `bc5150_name_passthrough` yang menghasilkan hierarki klinis lengkap) menghasilkan **nol** baris `audit_events`; tidak ada identitas pengguna sintetis diperkenalkan di `app/integration/` — `test_ingestion_creates_no_audit_events`, `test_ingestion_background_and_unclassified_also_create_no_audit_events` (`backend/tests/test_ingestion.py`).
+- **Perilaku FK / append-only:** penghapusan `User` yang memiliki riwayat audit ditolak oleh `ON DELETE RESTRICT`; *deactivation* tetap berhasil dan mempertahankan riwayat; tidak ada endpoint yang meng-*update* atau menghapus `audit_events` (diverifikasi melalui pencarian kode — `AuditEvent` hanya direferensikan lewat `db.add(...)` pada tiga titik pemanggilan).
+- **Verifikasi migrasi:** skema `audit_events` (kolom, FK, indeks, ketiadaan `CHECK` constraint) diukur pada database sekali-pakai, bukan diestimasi; `downgrade` menghapus `audit_events` dengan bersih dan `upgrade` ulang bersifat idempotent; F-2/F-3/F-4 tetap tidak tersentuh — `backend/tests/test_migration_chain.py`.
+- **DEV end-to-end acceptance:** login ADMIN → buat user ANALYST (`USER_CREATED`) → login ANALYST → mutasi klinis pada fixture khusus (`TEST_RUN_FINALIZED`, aktor benar) → ADMIN nonaktifkan ANALYST (`USER_DISABLED`) → token lama ditolak `401` → ADMIN aktifkan kembali (`USER_REACTIVATED`) → ANALYST ubah password sendiri (`PASSWORD_CHANGED`) → pemindaian kebocoran password/hash (bersih) → `sync-simrs` (aman — `SIMRS_BASE_URL` tidak diset di DEV, sehingga tidak ada panggilan jaringan nyata). Akun `admin`/`analyst1` yang sudah ada di DEV, dan seluruh 326 `TestRun` yang sudah terkumpul secara nyata, **tidak** tersentuh — fixture verifikasi terpisah dan berlabel jelas digunakan sebagai gantinya.
+
+**Yang secara eksplisit TIDAK dieksekusi:** pengujian manual/UI runtime pada frontend tidak dilakukan sebagai bagian dari verifikasi ini (M9.1b tidak menambah UI apapun). Uji konkurensi multi-koneksi sungguhan untuk `with_for_update(nowait=True)` tidak ditambahkan — perilaku yang ada dipertahankan tetapi tidak diuji ulang dengan skenario race baru.
+
+**Tidak tercakup oleh M9.1b, sengaja:** M9.2, M9.3b, M10.1 (tidak terkait); autentikasi *inbound* SIMRS (OD-S3, tetap eksternal/dideferensikan); TLS/HTTPS (OD-S6, tetap terbuka); remediasi riwayat koneksi instrumen; logging keamanan untuk percobaan yang ditolak/gagal (401/403); implementasi Gateway/rekonsiliasi masa depan.

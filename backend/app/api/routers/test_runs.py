@@ -4,12 +4,14 @@ from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 from typing import List
 
+from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.core.security import Role, require_role
 from app.schemas.test_run import TestRunResponse
 from app.services.test_run_service import TestRunService
 from app.models.test_run import TestRun
 from app.models.order import Order
+from app.models.user import User
 from app.models.visit import Visit
 from app.integration.simrs_client import SimrsClient
 from app.integration.simrs_payload import build_simrs_payload
@@ -30,32 +32,44 @@ def get_order_test_runs(order_id: int, db: Session = Depends(get_db)):
     return TestRunService.get_runs_by_order(db, order_id)
 
 @router.post("/test-runs/{run_id}/finalize", response_model=TestRunResponse, dependencies=[_clinical_write])
-def finalize_test_run(run_id: int, db: Session = Depends(get_db)):
+def finalize_test_run(
+    run_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
     """Set a TestRun as final for clinical validation."""
-    return TestRunService.finalize_run(db, run_id)
+    return TestRunService.finalize_run(db, run_id, current_user)
 
 @router.post("/test-runs/{run_id}/unfinalize", response_model=TestRunResponse, dependencies=[_clinical_write])
-def unfinalize_test_run(run_id: int, db: Session = Depends(get_db)):
+def unfinalize_test_run(
+    run_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
     """Unset the final state of a TestRun to allow another run to be finalized."""
-    return TestRunService.unfinalize_run(db, run_id)
+    return TestRunService.unfinalize_run(db, run_id, current_user)
 
 @router.post("/test-runs/{run_id}/delivery/start", response_model=TestRunResponse, dependencies=[_clinical_write])
-def start_test_run_delivery(run_id: int, db: Session = Depends(get_db)):
+def start_test_run_delivery(
+    run_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
     """Start the delivery process for a final TestRun."""
-    return TestRunService.start_delivery(db, run_id)
+    return TestRunService.start_delivery(db, run_id, current_user)
 
 @router.post("/test-runs/{run_id}/delivery/success", response_model=TestRunResponse, dependencies=[_clinical_write])
-def mark_test_run_delivery_success(run_id: int, db: Session = Depends(get_db)):
+def mark_test_run_delivery_success(
+    run_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
     """Mark a TestRun as successfully delivered."""
-    return TestRunService.mark_delivery_delivered(db, run_id)
+    return TestRunService.mark_delivery_delivered(db, run_id, current_user)
 
 @router.post("/test-runs/{run_id}/delivery/fail", response_model=TestRunResponse, dependencies=[_clinical_write])
-def mark_test_run_delivery_fail(run_id: int, db: Session = Depends(get_db)):
+def mark_test_run_delivery_fail(
+    run_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
     """Mark a TestRun delivery as failed."""
-    return TestRunService.mark_delivery_failed(db, run_id)
+    return TestRunService.mark_delivery_failed(db, run_id, current_user)
 
 @router.post("/test-runs/{run_id}/sync-simrs", dependencies=[_clinical_write])
-def sync_simrs(run_id: int, db: Session = Depends(get_db)):
+def sync_simrs(
+    run_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
     """Synchronize a final Test Run to SIMRS safely."""
     # Phase 1: Database Claim (Atomic)
     try:
@@ -75,8 +89,10 @@ def sync_simrs(run_id: int, db: Session = Depends(get_db)):
         # Build payload while relationships are safely and eagerly loaded
         payload = build_simrs_payload(test_run)
 
-        # Transition state and release lock (commits!)
-        test_run = TestRunService.start_delivery(db, run_id)
+        # Transition state and release lock (commits!). Same actor for both
+        # audit events this request produces (M9.1b design §8.2) — one
+        # authenticated user per request, not re-resolved per call.
+        test_run = TestRunService.start_delivery(db, run_id, current_user)
 
     except OperationalError:
         db.rollback()
@@ -87,9 +103,9 @@ def sync_simrs(run_id: int, db: Session = Depends(get_db)):
 
     # Phase 3: Finalization
     if simrs_response.success:
-        test_run = TestRunService.mark_delivery_delivered(db, run_id)
+        test_run = TestRunService.mark_delivery_delivered(db, run_id, current_user)
     else:
-        test_run = TestRunService.mark_delivery_failed(db, run_id)
+        test_run = TestRunService.mark_delivery_failed(db, run_id, current_user)
 
     return {
         "run_id": test_run.id_run,

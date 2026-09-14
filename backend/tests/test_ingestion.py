@@ -20,6 +20,7 @@ from app.integration.mllp import extract_control_id
 from app.integration.parsers.hl7 import parse_hl7_bc5150
 from app.integration.repository import process_message
 from app.models import (
+    AuditEvent,
     Instrument,
     InstrumentMessage,
     Order,
@@ -1049,6 +1050,53 @@ def test_name_passthrough_background_full_ingestion_creates_no_clinical_rows(ses
     assert count(session, TestRun) == count(session, Result) == 0
     assert count(session, Patient) == count(session, Visit) == count(session, Order) == 0
     assert tr.acks == [("NP_BG", True, "")]
+
+
+# =====================================================================
+# M9.1b — instrument ingestion is outside human actor attribution
+# =====================================================================
+
+
+def test_ingestion_creates_no_audit_events(session, instrument_id):
+    """M9.1b design §5 / task boundary: instrument-originated writes are
+    excluded from human actor attribution, by construction — no artificial
+    "system" or "instrument" user identity is introduced. ``repository.
+    process_message`` creates ``Patient``/``Visit``/``Order``/``TestRun``/
+    ``Result`` directly; it never calls ``TestRunService`` (the only place
+    that stages an ``AuditEvent``, see app/services/test_run_service.py), so
+    a full clinical ingestion — including the BC-5150 high-risk
+    name-passthrough path, which is the one policy that actually reaches the
+    clinical tables — must leave ``audit_events`` at zero."""
+    assert count(session, AuditEvent) == 0  # sanity: nothing before ingestion
+
+    run_message(
+        bc5150_patient_message(control_id="NOAUD1", obr3="30"), instrument_id,
+        classify_fn=BC5150_NAME,
+    )
+
+    # The full clinical hierarchy was created (same assertion basis as
+    # test_name_passthrough_named_message_persists_full_clinical_hierarchy)...
+    assert count(session, TestRun) == 1
+    assert count(session, Result) == 2
+    assert count(session, Patient) == count(session, Visit) == count(session, Order) == 1
+    # ...but ingestion itself produced zero audit rows.
+    assert count(session, AuditEvent) == 0
+
+
+def test_ingestion_background_and_unclassified_also_create_no_audit_events(session, instrument_id):
+    """Non-clinical ingestion outcomes (raw-only paths) must equally never
+    touch audit_events — there is no human actor and no workflow mutation
+    for either case."""
+    run_message(
+        _named_bc5150(control_id="NOAUD_BG", obr3="Background"), instrument_id,
+        classify_fn=BC5150_NAME,
+    )
+    run_message(
+        hl7_message(control_id="NOAUD_STRICT"), instrument_id,
+        classify_fn=STRICT,
+    )
+
+    assert count(session, AuditEvent) == 0
 
 
 def test_name_passthrough_unnamed_full_ingestion_creates_no_clinical_rows(session, instrument_id):

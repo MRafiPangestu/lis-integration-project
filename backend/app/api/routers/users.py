@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.core.security import Role, hash_password, require_role, validate_password_policy
+from app.models.audit_event import AuditEvent
 from app.models.user import User
 from app.schemas.auth import CreateUserRequest, UpdateUserStatusRequest, UserPublic
 
@@ -63,7 +64,13 @@ def list_users(db: Session = Depends(get_db)) -> List[User]:
 
 
 @router.post("", response_model=UserPublic, status_code=status.HTTP_201_CREATED)
-def create_user(payload: CreateUserRequest, db: Session = Depends(get_db)) -> User:
+def create_user(
+    payload: CreateUserRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """The audited actor is the calling ADMIN (``current_user``), never the
+    new account itself — ``entity_id`` is the newly created user."""
     validate_password_policy(payload.password)
 
     user = User(
@@ -74,6 +81,20 @@ def create_user(payload: CreateUserRequest, db: Session = Depends(get_db)) -> Us
     )
     db.add(user)
     try:
+        db.flush()  # populate user.id_user for the audit row's entity_id
+        db.add(
+            AuditEvent(
+                id_user=current_user.id_user,
+                actor_username=current_user.username,
+                actor_role=current_user.role,
+                action="USER_CREATED",
+                entity_type="USER",
+                entity_id=user.id_user,
+                outcome="SUCCESS",
+                state_before=None,
+                state_after=str(user.is_active),
+            )
+        )
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -102,6 +123,11 @@ def update_user_status(
     Deactivation is guarded so that an administrator cannot lock every
     administrator out of user management (M9.1a review finding M-3).
     Reactivation is unguarded — it can only ever increase access.
+
+    M9.1b: an audit row (``USER_DISABLED``/``USER_REACTIVATED``) is recorded
+    only when ``is_active`` actually changes — a no-op request (payload
+    matches the current value) still succeeds, exactly as before, but writes
+    no audit row, since no state transition occurred.
     """
     user = db.get(User, id_user)
     if user is None:
@@ -125,7 +151,26 @@ def update_user_status(
                 ),
             )
 
+    state_changed = user.is_active != payload.is_active
+    state_before = str(user.is_active)
     user.is_active = payload.is_active
+    state_after = str(user.is_active)
+
+    if state_changed:
+        db.add(
+            AuditEvent(
+                id_user=current_user.id_user,
+                actor_username=current_user.username,
+                actor_role=current_user.role,
+                action="USER_DISABLED" if not payload.is_active else "USER_REACTIVATED",
+                entity_type="USER",
+                entity_id=user.id_user,
+                outcome="SUCCESS",
+                state_before=state_before,
+                state_after=state_after,
+            )
+        )
+
     db.commit()
     db.refresh(user)
     return user

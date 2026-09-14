@@ -1257,6 +1257,8 @@ Metadata tersebut dapat berubah sesuai workflow tanpa mengubah data klinis.
 
 Tabel `users` (autentikasi API, M9.1a) juga termasuk Workflow Metadata — lihat Bagian 33. Tabel ini mengendalikan *siapa* yang boleh menjalankan workflow, bukan data klinis itu sendiri, dan tidak memiliki relasi foreign key ke hierarki `patients → visits → orders → test_runs → results` di atas.
 
+Tabel `audit_events` (atribusi aktor, M9.1b) juga termasuk Workflow Metadata — lihat Bagian 34. Tabel ini mencatat *siapa melakukan apa* pada workflow, bukan data klinis itu sendiri; `entity_id` di dalamnya menunjuk ke `test_runs` atau `users` secara polimorfik (bukan foreign key), dan `id_user` adalah satu-satunya foreign key pada tabel ini (ke `users.id_user`).
+
 Dengan demikian:
 
 ```text
@@ -1454,7 +1456,7 @@ test_runs.is_final
 
 # 29. Provisioning & Migration Lifecycle
 
-Sejak M9.0, database LIS dapat di-*provision* sepenuhnya melalui Alembic. *Migration chain* memiliki **satu root** (`8e973e84a9d7`, disebut **R0**) dan **satu head** (`27e00bcff992`, sejak M9.1a):
+Sejak M9.0, database LIS dapat di-*provision* sepenuhnya melalui Alembic. *Migration chain* memiliki **satu root** (`8e973e84a9d7`, disebut **R0**) dan **satu head** (`28aa370f5dbe`, sejak M9.1b):
 
 ```text
 8e973e84a9d7   R0 — baseline skema legacy pra-M1 (evidence-derived)
@@ -1469,10 +1471,12 @@ c5465739f048   message classification (message_class, classification_rule)
      ↓
 4aff9e134f16   M8.4 — index untuk order overview
      ↓
-27e00bcff992   M9.1a — tabel users (autentikasi)           ← HEAD
+27e00bcff992   M9.1a — tabel users (autentikasi)
+     ↓
+28aa370f5dbe   M9.1b — tabel audit_events (atribusi aktor)   ← HEAD
 ```
 
-Bagian ini menggantikan asumsi lama bahwa "SQL awal" harus dieksekusi manual sebelum migrasi. R0 kini merepresentasikan skema legacy tersebut di dalam *migration graph* yang dikelola versi (commit `d273e7f`), dan `alembic upgrade head` dari database kosong menghasilkan skema final tanpa langkah manual. `27e00bcff992` (M9.1a) ditulis manual (*hand-authored*), bukan hasil `--autogenerate` — lihat Bagian 33 untuk alasannya.
+Bagian ini menggantikan asumsi lama bahwa "SQL awal" harus dieksekusi manual sebelum migrasi. R0 kini merepresentasikan skema legacy tersebut di dalam *migration graph* yang dikelola versi (commit `d273e7f`), dan `alembic upgrade head` dari database kosong menghasilkan skema final tanpa langkah manual. `27e00bcff992` (M9.1a) dan `28aa370f5dbe` (M9.1b) keduanya ditulis manual (*hand-authored*), bukan hasil `--autogenerate` — lihat Bagian 33 dan Bagian 34 untuk alasannya.
 
 ## 29.1. Instalasi baru (database kosong)
 
@@ -1486,7 +1490,7 @@ Jalur *fresh-install* yang otoritatif:
    alembic upgrade head
    ```
 
-4. Hasil: seluruh chain `R0 → b1f9dbe772fa → 4a24240f8c32 → 621889e316b5 → c5465739f048 → 4aff9e134f16 → 27e00bcff992` diterapkan; tabel `alembic_version` berisi `27e00bcff992`.
+4. Hasil: seluruh chain `R0 → b1f9dbe772fa → 4a24240f8c32 → 621889e316b5 → c5465739f048 → 4aff9e134f16 → 27e00bcff992 → 28aa370f5dbe` diterapkan; tabel `alembic_version` berisi `28aa370f5dbe`.
 5. **(M9.1a)** Buat akun ADMIN pertama secara interaktif:
 
    ```bash
@@ -1497,9 +1501,9 @@ Jalur *fresh-install* yang otoritatif:
 
 Database PostgreSQL yang benar-benar kosong kini dapat di-*provision* **sepenuhnya melalui Alembic**. Operator **tidak** perlu — dan tidak boleh diinstruksikan — menjalankan `backend/schema/legacy_schema.sql` secara manual sebagai bagian dari *fresh-install* normal. File tersebut adalah artefak *evidence*, bukan perintah provisioning (lihat Bagian 29.5).
 
-Verifikasi otomatis: `backend/tests/test_migration_chain.py` (commit `b7c3d0e`; diperluas pada M9.1a untuk tabel `users`) menjalankan `alembic upgrade head` terhadap database sekali-pakai dan memeriksa revisi akhir serta invariant struktural skema (jumlah tabel/constraint/index, keberadaan objek M1/M8.2/M8.4/M9.1a, dan absennya objek yang belum di-remediasi).
+Verifikasi otomatis: `backend/tests/test_migration_chain.py` (commit `b7c3d0e`; diperluas pada M9.1a untuk tabel `users`, dan pada M9.1b untuk tabel `audit_events`) menjalankan `alembic upgrade head` terhadap database sekali-pakai dan memeriksa revisi akhir serta invariant struktural skema (jumlah tabel/constraint/index, keberadaan objek M1/M8.2/M8.4/M9.1a/M9.1b, dan absennya objek yang belum di-remediasi).
 
-> **Catatan F-2.** *Fresh-install chain* saat ini menghasilkan `patients.nomor_rm` sebagai `NOT NULL` tetapi **belum** `UNIQUE`. Constraint `UNIQUE(nomor_rm)` pada Bagian 18.2 adalah desain target; migration untuk menambahkannya adalah **remediasi terpisah yang belum ada di chain**. M9.0 tidak menyelesaikan item ini, dan M9.1a juga tidak menyentuhnya — lihat Bagian 33.
+> **Catatan F-2.** *Fresh-install chain* saat ini menghasilkan `patients.nomor_rm` sebagai `NOT NULL` tetapi **belum** `UNIQUE`. Constraint `UNIQUE(nomor_rm)` pada Bagian 18.2 adalah desain target; migration untuk menambahkannya adalah **remediasi terpisah yang belum ada di chain**. M9.0 tidak menyelesaikan item ini, dan M9.1a maupun M9.1b juga tidak menyentuhnya — lihat Bagian 33 dan Bagian 34.
 
 ## 29.2. Instalasi legacy yang sudah ada
 
@@ -1537,7 +1541,7 @@ Jalur migrasi:
 
 ## 29.3. Database development yang sudah ada
 
-`lis_marina_permata_dev` sudah berada pada `27e00bcff992` (HEAD, sejak M9.1a — sebelumnya `4aff9e134f16`). R0 adalah **leluhur** revisi tersebut, bukan migrasi yang perlu diputar ulang. **Jangan** menjalankan R0 langsung terhadap database ini. Jika ada revisi baru di masa depan, `alembic upgrade head` biasa akan melanjutkan dari revisi saat ini.
+`lis_marina_permata_dev` sudah berada pada `28aa370f5dbe` (HEAD, sejak M9.1b — sebelumnya `27e00bcff992` pada M9.1a, dan `4aff9e134f16` sebelum itu). R0 adalah **leluhur** revisi tersebut, bukan migrasi yang perlu diputar ulang. **Jangan** menjalankan R0 langsung terhadap database ini. Jika ada revisi baru di masa depan, `alembic upgrade head` biasa akan melanjutkan dari revisi saat ini.
 
 ## 29.4. Database PoC stabil / sumber evidence
 
@@ -1591,7 +1595,8 @@ Nama lama "legacy_baseline" pada revisi ini bersifat historis dan **tidak boleh*
 | `621889e316b5` | instrument runtime status — `instruments.connection_status`, `instruments.last_status_at` |
 | `c5465739f048` | message classification — `instrument_messages.message_class`, `instrument_messages.classification_rule` |
 | `4aff9e134f16` | empat index query untuk M8.4 order overview |
-| `27e00bcff992` (HEAD) | M9.1a — tabel `users` (autentikasi API); lihat Bagian 33 |
+| `27e00bcff992` | M9.1a — tabel `users` (autentikasi API); lihat Bagian 33 |
+| `28aa370f5dbe` (HEAD) | M9.1b — tabel `audit_events` (atribusi aktor); lihat Bagian 34 |
 
 ## 29.7. Peringatan operasional
 
@@ -1709,6 +1714,8 @@ test_groups
 
 **Catatan M9.1a:** tabel `users` (autentikasi API) ditambahkan setelah head migrasi ini sebagai *Workflow Metadata* terpisah — lihat Bagian 33. Tabel tersebut sengaja **tidak** digambarkan pada diagram di atas karena tidak memiliki relasi foreign key ke hierarki klinis manapun; diagram di atas tetap final untuk data klinis.
 
+**Catatan M9.1b:** tabel `audit_events` (atribusi aktor) ditambahkan setelah `users` sebagai *Workflow Metadata* tambahan — lihat Bagian 34. Tabel ini juga sengaja **tidak** digambarkan pada diagram di atas: satu-satunya foreign key-nya menunjuk ke `users`, bukan ke hierarki klinis, dan `entity_id`-nya bersifat polimorfik (bukan foreign key sama sekali).
+
 ---
 
 # 33. Users Table — Authentication (M9.1a)
@@ -1738,4 +1745,54 @@ Tidak ada foreign key dari atau ke `users` — diverifikasi oleh `backend/tests/
 
 **Provisioning akun pertama.** Tabel `users` kosong pada instalasi baru — sesuai desain, sistem terkunci sepenuhnya (*deny-by-default* tanpa akun berarti tidak ada yang bisa login). Akun ADMIN pertama dibuat melalui `backend/scripts/create_admin.py`, sebuah CLI interaktif (lihat Bagian 29.1 langkah 5 dan Bagian 29.2 langkah 6). Skrip ini **bukan** migrasi dan **bukan** proses startup aplikasi — keduanya akan menanam kredensial yang dikenal (*known credential*) di setiap deployment. Skrip menolak dijalankan terhadap database PoC stabil `lis_marina_permata` (Bagian 29.4).
 
-**Cakupan yang sengaja tidak termasuk.** Atribusi pengguna pada mutasi workflow klinis (kolom `id_user` pada `test_runs` atau tabel audit terpisah) **belum** ditambahkan oleh migrasi ini — itu adalah cakupan M9.1b (`07_TASK_LIST.md`), migrasi terpisah di masa depan.
+**Cakupan yang sengaja tidak termasuk.** Atribusi pengguna pada mutasi workflow klinis (kolom `id_user` pada `test_runs` atau tabel audit terpisah) **tidak** ditambahkan oleh migrasi ini — kolom `id_user` tidak pernah ditambahkan ke `test_runs` (atau tabel domain manapun); atribusi diimplementasikan sebagai tabel terpisah, `audit_events`, oleh M9.1b — lihat Bagian 34.
+
+---
+
+# 34. Audit Events Table — Actor Attribution (M9.1b)
+
+**Tujuan.** Tabel `audit_events` mencatat *siapa melakukan apa* untuk mutasi workflow klinis dan aksi manajemen pengguna — separuh *human-actor* dari NFR-08 (Workflow Auditability) yang belum terpenuhi setelah M9.1a. Ini adalah *Workflow Metadata* (Bagian 25), append-only, dan sepenuhnya terpisah dari `Clinical Data` — tidak ada kolom klinis (`nilai_hasil`, dsb.) yang disentuh atau disalin ke tabel ini.
+
+**Migrasi.** `backend/alembic/versions/28aa370f5dbe_m9_1b_add_audit_events_table.py`, `down_revision = "27e00bcff992"` — revisi tunggal setelah HEAD M9.1a, ditulis manual (*hand-authored*), **bukan** hasil `alembic revision --autogenerate`, untuk alasan yang identik dengan migrasi `users` (Bagian 33): F-2 dan F-3 masih merupakan drift ORM yang belum diremediasi, dan `--autogenerate` pada titik manapun di chain ini akan mengusulkan perubahan yang tidak disetujui pada keduanya. Migrasi `28aa370f5dbe` **hanya** membuat tabel `audit_events`; F-2, F-3, dan F-4 tetap tidak disentuh.
+
+**Kolom dan constraint yang diimplementasikan** (`app/models/audit_event.py`):
+
+| Kolom | Tipe | Constraint |
+|---|---|---|
+| `id_audit` | `SERIAL` (PK, autoincrement) | Primary key |
+| `id_user` | `INTEGER` | *Nullable* di level skema; **FK** ke `users.id_user`, `ON DELETE RESTRICT` |
+| `actor_username` | `VARCHAR(50)` | `NOT NULL` — snapshot `users.username` pada saat kejadian |
+| `actor_role` | `VARCHAR(20)` | `NOT NULL` — snapshot `users.role` pada saat kejadian |
+| `action` | `VARCHAR(50)` | `NOT NULL` — lihat daftar aksi di bawah |
+| `entity_type` | `VARCHAR(50)` | `NOT NULL` — `'TEST_RUN'` atau `'USER'` |
+| `entity_id` | `INTEGER` | `NOT NULL` — **bukan** foreign key (lihat di bawah) |
+| `occurred_at` | `TIMESTAMP` (tanpa timezone) | `NOT NULL`, `server_default = CURRENT_TIMESTAMP` |
+| `outcome` | `VARCHAR(20)` | `NOT NULL` — selalu `"SUCCESS"` pada M9.1b (lihat di bawah) |
+| `state_before` | `VARCHAR(30)` | nullable — label state sebelum mutasi |
+| `state_after` | `VARCHAR(30)` | nullable — label state sesudah mutasi |
+
+Satu-satunya foreign key pada tabel ini adalah `id_user → users.id_user`, diverifikasi oleh `backend/tests/test_migration_chain.py`.
+
+**Mengapa `id_user` nullable padahal selalu diisi.** Setiap aksi yang diatribusikan mensyaratkan pemanggil yang terautentikasi (deny-by-default, M9.1a), sehingga tidak ada kode M9.1b yang pernah menulis `NULL` pada kolom ini. Kolom dibiarkan *nullable* di level skema semata-mata untuk kemungkinan event bersumber-sistem di masa depan — bukan kebutuhan M9.1b saat ini. `ON DELETE RESTRICT` memastikan sebuah `User` dengan riwayat audit tidak dapat dihapus; diverifikasi langsung: percobaan `DELETE` pada user yang memiliki baris `audit_events` ditolak oleh database, sementara *deactivation* (`is_active = false`, satu-satunya mekanisme revocation yang ada) tetap berhasil dan mempertahankan riwayat audit tersebut.
+
+**`entity_id` bersifat polimorfik, bukan foreign key.** Satu tabel `audit_events` mencatat aksi terhadap dua jenis entitas berbeda (`test_runs.id_run` atau `users.id_user`), dan satu kolom integer tidak dapat menjadi foreign key ke dua tabel induk berbeda sekaligus. `entity_type` menentukan tabel mana yang dimaksud `entity_id`. Integritas referensial untuk pasangan ini adalah tanggung jawab aplikasi — aman dalam praktiknya karena setiap penulisan audit terjadi dalam transaksi yang sama dengan mutasi yang menghasilkan baris yang dirujuk, dan karena tidak ada endpoint yang menghapus `TestRun` atau `User` (hanya *deactivation* untuk `User`).
+
+**Semantik `action`.** Sembilan nilai, app-level enum (VARCHAR, tanpa `CHECK` constraint — mengikuti konvensi skema yang sama seperti `role`, `delivery_status`, `connection_status`):
+
+*Workflow klinis (lima aksi, seluruhnya melalui `TestRunService`):* `TEST_RUN_FINALIZED`, `TEST_RUN_UNFINALIZED`, `DELIVERY_STARTED`, `DELIVERY_DELIVERED`, `DELIVERY_FAILED`.
+
+*Manajemen pengguna (empat aksi, tiga endpoint):* `USER_CREATED` (`POST /api/users`), `USER_DISABLED` / `USER_REACTIVATED` (`PATCH /api/users/{id_user}/status`, dibedakan dari nilai `is_active` hasil), `PASSWORD_CHANGED` (`POST /api/account/change-password`).
+
+`sync-simrs` menghasilkan **dua** baris — `DELIVERY_STARTED` lalu `DELIVERY_DELIVERED`/`DELIVERY_FAILED` — tanpa logika khusus di router: kedua baris muncul secara alami karena `sync-simrs` memanggil `start_delivery` lalu `mark_delivery_delivered`/`mark_delivery_failed`, dua method `TestRunService` yang masing-masing sudah menulis baris auditnya sendiri. Panggilan HTTP keluar ke SIMRS berada di antara kedua commit tersebut, tidak pernah di dalam transaksi database yang terbuka — diverifikasi dengan koneksi database independen yang membuktikan commit pertama sudah terlihat oleh sesi lain sebelum panggilan HTTP dimulai.
+
+**Semantik `outcome`.** Hanya transisi state yang berhasil dan ter-commit yang dicatat — permintaan yang ditolak (`401`/`403`) atau gagal karena aturan bisnis (mis. `409 Conflict`) tidak menghasilkan baris sama sekali, sehingga `outcome` selalu bernilai `"SUCCESS"` pada M9.1b. Kolom ini ada untuk ekstensibilitas di masa depan tanpa perubahan skema, bukan karena ada jalur kode yang menulis nilai lain saat ini.
+
+**Semantik `state_before`/`state_after`.** Label singkat yang merepresentasikan nilai domain sesungguhnya — representasi boolean literal (`"True"`/`"False"`) untuk `is_final`, atau nilai `delivery_status` yang sudah ada apa adanya (`"pending"`, `"sending"`, `"delivered"`, `"failed"`) — bukan JSON. `PASSWORD_CHANGED` selalu memiliki `state_before = NULL` dan `state_after = NULL`: kolom ini **tidak pernah** memuat `password_hash` atau password plaintext, diverifikasi oleh pemindaian field secara langsung pada test suite.
+
+**Penulisan dalam transaksi yang sama.** Setiap baris `audit_events` di-*stage* (`session.add`) sebelum `session.commit()` yang sudah ada pada method yang melakukan mutasi bisnis terkait — tidak ada commit baru, tidak ada boundary transaksi baru. Jika penulisan audit gagal (mis. constraint violation), mutasi bisnis ikut *rollback* — tidak ada baris audit yatim, dan tidak ada mutasi bisnis yang "berhasil" tanpa audit yang menyertainya.
+
+**Immutability.** Aplikasi-level, *append-only* — tidak ada endpoint yang meng-*update* atau menghapus baris `audit_events`; tidak ada *DB trigger* atau `REVOKE` yang menegakkannya pada milestone ini (konsisten dengan pola imutabilitas `results` yang sudah ada, Bagian 11).
+
+**Cakupan yang sengaja tidak termasuk.** Login (`POST /api/auth/login`) — `users.last_login_at` tetap menjadi catatan yang cukup. Pembacaan (`GET`). Ingesti instrumen — Integration Service menulis langsung ke database di luar siklus request manapun dan tidak memperkenalkan identitas pengguna sintetis; diverifikasi oleh regresi khusus yang membuktikan ingesti klinis penuh menghasilkan nol baris `audit_events`. Retensi tidak terbatas — tidak ada kebijakan *expiry*/*deletion*. Tidak ada kolom *correlation ID* / *request ID*.
+
+Rincian desain dan verifikasi lengkap: `M9.1b_AUDIT_ATTRIBUTION_DESIGN.md`.

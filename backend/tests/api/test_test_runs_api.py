@@ -7,8 +7,9 @@ import datetime
 from app.main import app
 from app.api.deps import get_current_user
 from app.core.database import get_db
+from app.core.security import Role, hash_password
 from app.models.base import Base
-from app.models import Patient, Visit, Order, Instrument, TestRun, Result
+from app.models import Patient, Visit, Order, Instrument, TestRun, Result, User
 
 # Use a test database
 SQLALCHEMY_DATABASE_URL = "postgresql://postgres:super-user@localhost:5432/lis_marina_permata_test"
@@ -27,7 +28,20 @@ def setup_database():
         # Instrument
         inst = Instrument(nama_mesin="Mindray BC-5150", tipe_koneksi="TCP", protokol="HL7")
         session.add(inst)
-        
+
+        # M9.1b: a real, persisted actor. audit_events.id_user is a live FK
+        # to users.id_user, so the old id_user=0 stub can no longer stand in
+        # for the authenticated caller here.
+        analyst_user = User(
+            username="test-analyst",
+            nama_lengkap="Test Analyst",
+            password_hash=hash_password("TestAnalystPass1"),
+            role=Role.ANALYST.value,
+            is_active=True,
+        )
+        session.add(analyst_user)
+        session.flush()
+
         # Patient -> Visit -> Order
         pat = Patient(nomor_rm="RM-TEST-001", nama_lengkap="Test Patient")
         session.add(pat)
@@ -58,12 +72,13 @@ def setup_database():
         session.commit()
         
         # Keep IDs to use in tests
-        global TEST_ORDER_ID, TEST_RUN1_ID, TEST_RUN2_ID, TEST_RUN3_ID, TEST_RESULT_ID
+        global TEST_ORDER_ID, TEST_RUN1_ID, TEST_RUN2_ID, TEST_RUN3_ID, TEST_RESULT_ID, TEST_ANALYST_USER_ID
         TEST_ORDER_ID = order.id_order
         TEST_RUN1_ID = run1.id_run
         TEST_RUN2_ID = run2.id_run
         TEST_RUN3_ID = run3.id_run
         TEST_RESULT_ID = res.id_hasil
+        TEST_ANALYST_USER_ID = analyst_user.id_user
         
     yield
     Base.metadata.drop_all(bind=engine)
@@ -76,27 +91,29 @@ def db_session(setup_database):
     finally:
         db.close()
 
-class _StubAnalystUser:
-    """A minimal stand-in for the ORM ``User`` — this module tests business
-    logic (finalize/delivery/results), not authentication, so it bypasses
-    real login (M9.1a introduced auth; dedicated coverage for it lives in
-    tests/api/test_auth_security.py and tests/api/test_route_allowlist.py)."""
-
-    id_user = 0
-    username = "test-analyst"
-    role = "ANALYST"
-    is_active = True
-
-
 @pytest.fixture()
 def client(db_session):
+    """This module tests business logic (finalize/delivery/results), not
+    authentication — dedicated auth/RBAC coverage lives in
+    tests/api/test_auth_security.py and tests/api/test_route_allowlist.py, and
+    dedicated audit-attribution-via-HTTP coverage lives in
+    tests/api/test_test_run_audit_api.py. It still bypasses real login for
+    speed, but the overridden ``get_current_user`` now resolves to a real,
+    persisted ``users`` row (M9.1b: audit_events.id_user is a live FK) rather
+    than a synthetic ``id_user=0`` stub — queried fresh from the same
+    ``db_session`` the route itself uses, so it is always attached and valid.
+    """
     def override_get_db():
         try:
             yield db_session
         finally:
             pass
+
+    def override_get_current_user():
+        return db_session.get(User, TEST_ANALYST_USER_ID)
+
     app.dependency_overrides[get_db] = override_get_db
-    app.dependency_overrides[get_current_user] = lambda: _StubAnalystUser()
+    app.dependency_overrides[get_current_user] = override_get_current_user
     yield TestClient(app)
     del app.dependency_overrides[get_db]
     del app.dependency_overrides[get_current_user]

@@ -11,6 +11,7 @@ from app.models.instrument_message import InstrumentMessage
 from app.models.test_run import TestRun
 from app.models.result import Result
 from app.models.user import User
+from app.models.audit_event import AuditEvent
 
 __all__ = [
     "Base",
@@ -26,5 +27,6 @@ __all__ = [
     "TestRun",
     "Result",
     "User",
+    "AuditEvent",
 ]
 

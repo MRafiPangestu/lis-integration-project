@@ -598,10 +598,10 @@ Tidak tersedia endpoint atau antarmuka aplikasi untuk mengubah nilai klinis yang
 - **Dokumentasi API** (`/docs`, `/redoc`, `/openapi.json`) tersedia hanya pada `ENVIRONMENT=development` dan dinonaktifkan pada `ENVIRONMENT=production`.
 - **Frontend:** token disimpan pada `sessionStorage` melalui `AuthProvider`/`LoginView`; satu titik pemasangan header (`client.ts`) menambahkan `Authorization: Bearer` pada setiap request dan membersihkan sesi saat menerima respons 401.
 
-**Belum diimplementasikan, secara sengaja:**
-- **Atribusi pengguna** pada mutasi workflow (siapa yang finalize / unfinalize / deliver) — lihat M9.1b di `07_TASK_LIST.md`.
-- **TLS/HTTPS** — §11.1 (pembatasan jaringan) tetap menjadi kontrol utama untuk lalu lintas saat ini; ini adalah keputusan terbuka (OD-S6), bukan bagian dari M9.1a.
-- **Autentikasi khusus SIMRS *inbound*** (service principal) — lihat §9.2; tetap merupakan keputusan eksternal (OD-S3).
+**Belum diimplementasikan pada M9.1a, secara sengaja:**
+- **Atribusi pengguna** pada mutasi workflow (siapa yang finalize / unfinalize / deliver) — **sejak M9.1b, ini sudah diimplementasikan.** Lihat §12 di bawah.
+- **TLS/HTTPS** — §11.1 (pembatasan jaringan) tetap menjadi kontrol utama untuk lalu lintas saat ini; ini adalah keputusan terbuka (OD-S6), masih belum diimplementasikan.
+- **Autentikasi khusus SIMRS *inbound*** (service principal) — lihat §9.2; tetap merupakan keputusan eksternal (OD-S3), masih belum diimplementasikan.
 
 Rincian desain dan verifikasi lengkap: `M9.1a_SECURITY_FOUNDATION_DESIGN.md`.
 
@@ -624,6 +624,22 @@ Log utama meliputi:
 - Response dari SIMRS.
 
 Audit log digunakan untuk menelusuri aktivitas penting tanpa mengubah data klinis yang telah diterima dari instrumen.
+
+### 12.1 Atribusi Aktor pada Workflow (M9.1b)
+
+Separuh *human-actor* dari NFR-08 — "siapa yang melakukan aktivitas ini" — diimplementasikan melalui satu tabel append-only, `audit_events` (lihat `04_DATABASE_DESIGN.md` untuk skema lengkap).
+
+- **Cakupan:** lima mutasi workflow klinis (finalize, unfinalize, delivery start/delivered/failed) dan empat aksi manajemen pengguna (create/disable/reactivate user, ubah password sendiri). Login **tidak** diaudit di sini — `users.last_login_at` tetap menjadi catatan yang cukup untuk itu. Pembacaan (`GET`) dan ingesti instrumen **tidak** diaudit di sini.
+- **Aktor:** selalu `current_user` yang diautentikasi (M9.1a, `get_current_user`) — diteruskan sebagai parameter eksplisit ke layer service, bukan melalui *contextvar* atau state global. Identitas tidak pernah dipercaya dari body/query/header permintaan.
+- **`id_user`** pada `audit_events` bersifat *nullable* di level skema (untuk kemungkinan event bersumber-sistem di masa depan) dengan `ON DELETE RESTRICT` ke `users.id_user` — namun setiap baris yang ditulis M9.1b selalu memiliki aktor manusia nyata, karena setiap aksi yang diaudit mensyaratkan autentikasi. Kolom `actor_username` dan `actor_role` menyimpan *snapshot* pada saat kejadian, sehingga baris tetap legible meskipun akun terkait kemudian berubah.
+- **Hanya transisi yang berhasil dan ter-commit yang dicatat.** Permintaan yang ditolak (`401`/`403`) atau gagal karena aturan bisnis (mis. konflik `409`) tidak menghasilkan baris audit.
+- **Penulisan audit terjadi dalam transaksi yang sama** dengan mutasi bisnis yang dicatatnya — bukan commit terpisah.
+- **Sinkronisasi SIMRS (`sync-simrs`) menghasilkan dua baris audit** — `DELIVERY_STARTED` lalu `DELIVERY_DELIVERED`/`DELIVERY_FAILED` — mengikuti arsitektur dua-transaksi yang sudah ada (§9.2, §8): panggilan HTTP keluar ke SIMRS tidak pernah berada di dalam transaksi database yang terbuka.
+- **Ingesti instrumen tidak menghasilkan baris audit sama sekali** dan tidak memperkenalkan identitas pengguna sintetis — Integration Service menulis langsung ke database di luar siklus request/`get_current_user` manapun (§2.3), tetap konsisten dengan prinsip bahwa hanya aktivitas oleh *pengguna* yang diatribusikan (NFR-08).
+- **Immutability bersifat application-level**, bukan *DB trigger* atau `REVOKE` — tidak ada endpoint yang meng-*update* atau menghapus baris `audit_events`, mengikuti pola yang sama dengan imutabilitas `results` (§11.3).
+- **Retensi tidak terbatas**; tidak ada correlation/request ID pada milestone ini.
+
+Rincian desain dan verifikasi lengkap: `M9.1b_AUDIT_ATTRIBUTION_DESIGN.md`.
 
 ---
 
