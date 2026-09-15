@@ -585,6 +585,10 @@ Extend the Integration Service to handle concurrent connections from all 9 instr
 
 **Current status — M8.3: COMPLETE**, evidence E1 (`backend/tests/test_parser_registry.py`). **ASTM support is DEFERRED** by this milestone's own decision — a deliberate project choice pending field-verified evidence, not a failure and not an external block. A second protocol family is introduced only when a real corpus exists for it (`09_PHYSICAL_INSTRUMENT_VALIDATION.md` §11.4, §16).
 
+> **First ASTM field evidence now exists — the deferral condition is partially, not fully, met.** A Sysmex XN-550 (`id_instrument = 3`) was physically connected on **15 September 2026** and one complete ASTM E1394-97 patient-result message was captured: `docs/instruments/sysmex_xn550/`, with the redacted raw message at `backend/tests/fixtures/instruments/sysmex_xn550/patient_result_001.astm`.
+>
+> **ASTM support remains DEFERRED and M8.3's scope is unchanged.** One message is not the corpus this milestone's condition asks for — `09_PHYSICAL_INSTRUMENT_VALIDATION.md` T-CORPUS-01-03 requires **≥20 messages across categories**, and two questions that §11.3 says must be answered *before* parser work are still open: the XN-550 was observed operating as a **TCP client expecting the LIS to listen** (the LIS is client-only, `core/config.py`), and whether ASTM 1381-95 low-level framing is present on the wire is **unresolved** (no packet capture was taken). No parser, no configuration entry, no transport change and no schema change is authorised by this evidence.
+
 - [x] **M8.4** — Instrument Order Overview API
   - [x] Row grain frozen as **one Order** (not Patient/Visit/TestRun); an order is included when the requested instrument has ≥ 1 TestRun for it (EXISTS semi-join, no fan-out); patient identity is displayed but the view stays order-grained
   - [x] Effective run = M7's finality-first selection restricted to the requested instrument: `ORDER BY is_final DESC, run_sequence DESC, id_run DESC` → first row (no `waktu_run` ordering key; `run_sequence` is NOT NULL / MAX+1 / UNIQUE per order, `id_run DESC` is the defensive tie-breaker)
@@ -931,7 +935,7 @@ Basis: `06_QA_TEST_PLAN.md` §21 sign-off criteria.
 
 | ID | Gate | Requirement basis | Engineering work | External blocker | External owner |
 |---|---|---|---|---|---|
-| **RG-1** | Second instrument / multi-instrument isolation | `02_PRD.md` AC-01, AC-13; `06_QA_TEST_PLAN.md` §21.6 | **No new milestone.** Configuration entry, a parser for that instrument, and a field session | Physical access to a second instrument; `09_PHYSICAL_INSTRUMENT_VALIDATION.md` question Q5 (which instruments are in routine clinical use) | Lab management |
+| **RG-1** | Second instrument / multi-instrument isolation | `02_PRD.md` AC-01, AC-13; `06_QA_TEST_PLAN.md` §21.6 | **No new milestone.** Configuration entry, a parser for that instrument, and a field session | Physical access to a second instrument; `09_PHYSICAL_INSTRUMENT_VALIDATION.md` question Q5 (which instruments are in routine clinical use). **Partially advanced (15 Sep 2026):** a Sysmex XN-550 was physically connected and one ASTM message captured (`docs/instruments/sysmex_xn550/`). **The gate is not cleared** — no parser, no configuration entry, no concurrent-isolation session, and the observed client/server role is inverted relative to the current client-only transport | Lab management |
 | **RG-2** | SIMRS end-to-end delivery | `02_PRD.md` AC-11, FR-16; `06_QA_TEST_PLAN.md` §21.7 | **None — the code already exists** (M6) | SIMRS Integration Specification: endpoint, payload contract and authentication are deferred to it by `01_PROJECT_BRIEF.md` §7 and `02_PRD.md` FR-17 | Project owner / hospital IT (SIMRS vendor) |
 | **RG-3** | `PATIENT_RESULT` enablement for BC-5150 | `02_PRD.md` FR-04; `09_PHYSICAL_INSTRUMENT_VALIDATION.md` §9.5, §9.6 | M9.2 **and** M9.3b **and** the specimen-identity decision | Physical evidence: T-BC-K ×2, T-BC-B, T-ID-02; lab-management questions Q1 and Q4 | Project owner, on field evidence |
 
@@ -980,7 +984,7 @@ Status vocabulary and the completion rule are defined at the top of this documen
 | M8.1 — Instrument Config & Supervisor | ✅ COMPLETE | Instruments 2–9 rollout → RG-1 (external) |
 | M8.2 — Ingestion Hardening & Classification | ✅ COMPLETE | Specimen identity DEFERRED → RG-3 |
 | M8.2b — BC-5150 Background Rule | ✅ COMPLETE (field-verified) | QC extension BLOCKED → M9.3b |
-| M8.3 — Parser Registry | ✅ COMPLETE | ASTM DEFERRED |
+| M8.3 — Parser Registry | ✅ COMPLETE | ASTM **still DEFERRED**; first ASTM field evidence captured 15 Sep 2026 (XN-550, 1 message, not a corpus) — `docs/instruments/sysmex_xn550/` |
 | M8.4 — Instrument Order Overview API | ✅ COMPLETE | D4 `total_runs` consciously not implemented |
 | M8.5 — Enterprise Dashboard Integration | ✅ COMPLETE | Tier-2 tests deferred by permitted fallback → M9.4 |
 | M8.6 — Frontend Visual Polish | ✅ COMPLETE | F3 behavioural note; O8 unconfirmed (OD-3) |

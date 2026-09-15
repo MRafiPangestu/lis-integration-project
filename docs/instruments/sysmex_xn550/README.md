@@ -1,0 +1,209 @@
+# Sysmex XN-550 — Engineering Summary
+
+**Status: field-verified reference instrument. No production integration exists.**
+
+This is the developer-facing summary of what the XN-550 has been *observed* to do. The full survey record, including the parts that are superseded, is in [`FIELD_REPORT.md`](FIELD_REPORT.md).
+
+Evidence labels follow `docs/09_PHYSICAL_INSTRUMENT_VALIDATION.md` §2 and are never collapsed: **VERIFIED** (observed on the physical instrument) · **REPO-CONFIRMED** (read from this repository's source — says what the software does, not what the instrument does) · **NOT FIELD-VERIFIED** · **UNKNOWN / NOT CONFIRMED**.
+
+---
+
+## 1. Overview
+
+On **15 September 2026** a Sysmex XN-550 was physically connected to a survey PC over Ethernet, configured for ASTM output, and observed to transmit a complete patient-result message. One message was captured and is committed here as a redacted test fixture.
+
+This establishes the XN-550 as the **second instrument in this project with any field evidence at all** (after the Mindray BC-5150), and it answers the first question `docs/09` §11.3 says must be answered before parser work: *which side initiates the connection?*
+
+**What this does not do:** it does not make the XN-550 integrable today. There is no XN-550 parser, no configuration entry, and — most consequentially — the observed transport direction is the opposite of what the current LIS supports. See §6.
+
+---
+
+## 2. Instrument identity
+
+| Property | Value | Evidence |
+|---|---|---|
+| Manufacturer / model | Sysmex XN-550 | **VERIFIED** |
+| Family | XN-L | **VERIFIED** |
+| Discipline | Haematology | **VERIFIED** |
+| `id_instrument` in this repository | **3** | **REPO-CONFIRMED** — `docs/08_MASTER_DATA.md`, `docs/09` §4 |
+| Identifiers seen in the `H` record | `XN-550^00-29^41122^^^^BD634545` | **VERIFIED** — exact meaning of each component **UNKNOWN** |
+| Master-data status before this survey | "Research Baseline", protocol `NULL`, transport `NULL` | **REPO-CONFIRMED** |
+
+> `docs/08_MASTER_DATA.md` §6.2 rule still applies: research capability is never written into deployment configuration. This survey upgrades the XN-550 from *research baseline* to *field-evidenced* — it does **not** authorise a configuration entry.
+
+---
+
+## 3. Transport / protocol
+
+| Property | Observed | Evidence |
+|---|---|---|
+| Transport | TCP/IP over Ethernet | **VERIFIED** |
+| **Connection role** | **XN-550 = TCP client; LIS PC = TCP server** | **VERIFIED** |
+| Endpoint used in the session | Survey PC `10.0.0.10`, port `5001` | **VERIFIED** — survey values, **not** deployment values |
+| Instrument setting applied | IPU Settings → Host Computer → `ASTM1381-95 / ASTM1394-97` | **VERIFIED** |
+| Record grammar | ASTM E1394-97 — `H` / `P` / `O` / `C` / `R` / `L` | **VERIFIED** |
+| Delimiters | `|` field, `\` repeat, `^` component, `&` escape (declared in `H`-2) | **VERIFIED** |
+| Record terminator | `\r` (`0x0D`); no `\n` present | **VERIFIED** |
+| ASTM 1381-95 low-level framing | **NOT CONFIRMED** — absent from the recovered artefact, but the artefact passed through a hand-transcription step and no pcap was taken | **UNKNOWN** |
+| ICMP ping to the instrument | Fails; ARP presence is the reliable link check | **VERIFIED** |
+| Windows inbound firewall rule | Required on the listening PC | **VERIFIED** |
+
+> **The connection role is the headline finding.** `backend/app/core/config.py` sets `SUPPORTED_INSTRUMENT_MODES = {"client"}` — the LIS dials out and cannot listen. `docs/09` §11.3 states that an instrument which expects the LIS to listen *"cannot be connected at all without implementing listener mode."*
+>
+> **However:** this survey shows the XN-550 *operating* as a client. It does **not** show that the XN-550 *cannot* accept an inbound connection — that was never successfully tested. Do not conclude that listener mode is mandatory until that question is answered (§7, item 1).
+
+---
+
+## 4. Verified capabilities
+
+Each of these was observed on the physical instrument on 15 September 2026:
+
+- **VERIFIED** — TCP/IP connectivity between the XN-550 and the LIS PC.
+- **VERIFIED** — XN-550 → LIS transmission, initiated by the instrument.
+- **VERIFIED** — ASTM message reception, complete and terminated.
+- **VERIFIED** — `H` / `P` / `O` / `R` / `L` record structure observed, plus **`C` (comment) records that the survey report's own legend does not mention**.
+- **VERIFIED** — raw patient-result capture: 2 824 bytes, 49 records, 42 `R` records.
+- **VERIFIED** — experimental ACK handling: the prototype listener ACKed permissively on receipt and the instrument completed its transmission.
+- **VERIFIED** — the instrument's output format is operator-configurable; a legacy fixed-width proprietary format is also reachable from the same device.
+
+> **On "ACK/NACK handling":** the survey report claims the listener handles an ACK/**NACK** handshake. The script sends `ACK` (`0x06`) only and contains **no `NAK` (`0x15`) path**, and it ACKs per TCP chunk rather than per validated ASTM frame. What is verified is *permissive ACK-on-receive*, nothing more. NACK behaviour is **NOT FIELD-VERIFIED**.
+
+---
+
+## 5. Evidence status table
+
+| Item | Status | Note |
+|---|---|---|
+| TCP/IP connectivity | **VERIFIED** | Session 1 |
+| XN-550 → LIS transmission | **VERIFIED** | Instrument-initiated |
+| ASTM message reception | **VERIFIED** | Complete message, `L|1|N` terminator |
+| `H`/`P`/`O`/`R`/`L` structure observed | **VERIFIED** | `C` records also present |
+| Raw patient-result capture | **VERIFIED** | 1 message; committed redacted |
+| Experimental ACK handling | **VERIFIED** | ACK-only, permissive, per chunk |
+| ASTM 1381-95 framing present or absent | **UNKNOWN / NOT CONFIRMED** | No pcap; artefact hand-transcribed |
+| NACK handling | **NOT FIELD-VERIFIED** | No NAK path exists in the prototype |
+| Whether XN-550 can accept inbound connections | **UNKNOWN / NOT CONFIRMED** | Client mode never succeeded |
+| Historical host query (LIS → instrument request) | **NOT FIELD-VERIFIED** | Never attempted |
+| Historical resend behaviour | **NOT FIELD-VERIFIED** | Never attempted |
+| ACK-timeout retransmission behaviour | **NOT FIELD-VERIFIED** | ACK never withheld |
+| Reconnect / idle-socket / connection-limit behaviour | **NOT FIELD-VERIFIED** | Not exercised |
+| Multiple messages per connection | **NOT FIELD-VERIFIED** | One message only |
+| Exact semantics of the patient identifier field | **UNKNOWN / NOT CONFIRMED** | See §5.1 |
+| Exact specimen / sample identifier semantics | **UNKNOWN / NOT CONFIRMED** | See §5.1 |
+| QC message classification | **NOT FIELD-VERIFIED** | Zero QC captures |
+| Calibration classification | **NOT FIELD-VERIFIED** | Zero captures |
+| Maintenance / startup classification | **NOT FIELD-VERIFIED** | Zero captures |
+| Result-value fidelity end to end | **NOT FIELD-VERIFIED** | Never ingested by this system |
+| Legacy fixed-width format layout | **UNKNOWN** | Only a truncated sample exists |
+
+### 5.1 Identity semantics — actively contradicted by the capture
+
+The survey report's legend states that `P` carries the patient identity and `O` carries the sample id / tube barcode. **The captured message does not support this:**
+
+- the **patient name is in `O`-4** (instrument specimen id) — not in `P`;
+- **`O`-3, the ASTM specimen-id field, is empty**;
+- **`P`-5 holds a bare numeric id** whose meaning is unknown (hospital MRN? instrument-local sequence? worklist key?);
+- **no barcode or specimen identifier is identifiable anywhere** in the message.
+
+This is the XN-550 equivalent of the identity question `docs/09` §10 raises for the BC-5150, and it is **unresolved**. Any parser that maps these fields is guessing until a corpus with known ground truth exists. Do not let the report's legend stand in for evidence.
+
+---
+
+## 6. Current integration boundary
+
+**REPO-CONFIRMED — nothing about the XN-550 is integrated, and nothing in this import changes that:**
+
+| Layer | State |
+|---|---|
+| Parser | **None.** `backend/app/integration/parsers/registry.py` contains exactly one entry, `bc5150_hl7`. Resolution is exact-match with no fallback; an unknown `parser_key` raises `ParserNotRegisteredError` at startup |
+| ASTM support | **None anywhere in production code.** The ingestion path is HL7 v2.3.1 over MLLP |
+| Transport | **Client-only.** `SUPPORTED_INSTRUMENT_MODES = {"client"}`; listener mode is explicitly deferred in `backend/app/core/config.py` |
+| Configuration | **No XN-550 entry** in `instruments.example.json`; enabling one today would fail loudly at startup |
+| Classification | Policies are BC-5150-specific; no XN-550 policy exists |
+| Database | **Unchanged.** No migration, no schema change, no new model was introduced by this import |
+
+**This import adds documentation and one test fixture. It changes no production behaviour.**
+
+> Related repository artefact, for the avoidance of doubt: `docs/09` §4.2 warns that `backend/mesin_simulator.py` emits ASTM-style records labelled `Sysmex_XN-550` and **must never be cited as evidence**. That warning stands. This document — not that script — is the XN-550 evidence record. The two happen to agree that the XN-550 speaks ASTM, which is a coincidence rather than corroboration.
+
+---
+
+## 7. Open verification items
+
+In the order they should be answered. Items 1 and 2 are the ones that can invalidate an integration approach, so they come before any parser work (`docs/09` §11.3).
+
+1. **Can the XN-550 accept an inbound TCP connection, or is it client-only?** Determines whether listener mode is a hard prerequisite or one of two options. **Blocks the transport decision.**
+2. **Is ASTM 1381-95 framing present on the wire?** Requires a packet capture (`docs/09` §12.3). **Blocks any transport implementation.**
+3. **Identity semantics** — what is `P`-5? Where does a specimen/tube barcode appear, if at all? Requires a corpus with known ground truth.
+4. **ACK dependence** — what does the instrument do when an ACK is delayed, withheld, or replaced by a NAK? *(Same class of question as BC-5150 T-BC-T, which is gated on lab-management approval to withhold an ACK on a live instrument.)*
+5. **Retransmission and resend** — repeat-run vs retransmission, reconnect resend, ACK-timeout resend. **Feeds M9.2; does not resolve it.**
+6. **QC / calibration / maintenance / startup message shapes** — currently zero captures. **Feeds M9.3b; does not resolve it.**
+7. **Historical host query** — whether the instrument supports a LIS-initiated request for prior results, and in what dialect. Never attempted.
+8. **Message corpus** — `docs/09` T-CORPUS-01-03 requires **≥20 messages across categories**. One exists.
+9. **Multiple messages per connection**, reconnect behaviour, idle-socket behaviour, connection limits, ordering guarantees — every row of `docs/09` §11.2 is still open for this instrument.
+
+> **None of the following is solved by this survey, and no document in this directory may be cited as solving it:** host query, historical reconciliation, retransmission semantics, deduplication (M9.2), QC or calibration filtering (M9.3b), specimen identity, or Gateway/reconciliation. Vendor or report *claims* that the instrument supports a capability are **CLAIMED**, never VERIFIED.
+
+---
+
+## 8. Parser contract
+
+A test-only contract pins what the capture structurally **is**, so that a future parser is written against observed evidence rather than against the survey report's prose.
+
+**`backend/tests/test_xn550_astm_contract.py`** — 16 tests, DB-free and analyzer-free, reading only the committed fixture. It imports no ASTM production code, because none exists.
+
+### 8.1 What the contract proves
+
+| Area | Asserted |
+|---|---|
+| Artefact integrity | Byte length (2 824) and SHA-256 pinned; PHI masks present and intact |
+| Line discipline | Bare `CR` terminators, **zero** `LF`, no `CRLF`; final record CR-terminated |
+| Record inventory | Exactly `H`×1, `P`×1, `O`×1, `C`×3, `R`×42, `L`×1 — 49 total |
+| Record ordering | The exact sequence `H P C O C R×42 C L`; H first, L last, P before O before the first R |
+| Control records | All three `C` records survive as `C`, are never counted as `R`, and sit after P, after O, and after the final R |
+| Delimiters | `H`-2 declares `\^&`; the repeat `\` is used in `O`-4, the component `^` in `R`-2, the escape `&` inside graphic result values |
+| `R` field layout | All 42 records have the same 13 fields; `R`-1 runs 1..42 contiguously |
+| Extraction | Test name (`R`-2 component 5), value (`R`-3), units (`R`-4), abnormal flag (`R`-6), status (`R`-8), timestamp (`R`-12), with spot-checks across all three observed flag states |
+| Uniform fields | Every result is final (`F`), same operator id (`lab`), one shared run timestamp parseable as `%Y%m%d%H%M%S` |
+| Reference ranges | `R`-5 is empty on **every** result — the instrument supplied none |
+| Result shapes | 28 measured · 10 interpretive flags · 4 graphic references — a parser assuming "R record = numeric measurement" mishandles 14 of 42 |
+| Fail-closed guard | The registry still holds only `bc5150_hl7`; `xn550_astm`, `sysmex_xn550` and `astm_generic` all raise `ParserNotRegisteredError` |
+
+The contract was mutation-checked: converting one `C` record to an `R` record fails 12 tests, and reintroducing PHI fails 2.
+
+### 8.2 What the contract intentionally leaves unresolved
+
+`test_contract_does_not_assert_unverified_semantics` asserts only that `P`-5 and `O`-4 are **populated**, and that **`O`-3 is empty**, never what any of them means. It exists so the absence of a semantic claim is explicit rather than accidental, and so that a future capture carrying a populated `O`-3 registers as new evidence instead of passing unnoticed.
+
+**Deliberately not asserted anywhere:** that `P`-5 is an MRN · that `O`-3 or `O`-4 is a specimen id or barcode · any Patient / Visit / Order mapping · any deduplication or retransmission identity · any QC, calibration or maintenance classification · any wire-level ASTM E1381 framing behaviour. Semantic patient and specimen mapping is **deferred** until a corpus with known ground truth exists (§5.1, §7).
+
+### 8.3 Why no production parser was written
+
+`ParserFn` is typed `Callable[[str], Optional[ParsedHL7]]`, and `ParsedHL7` requires `ParsedPatient.nomor_rm`, `ParsedPatient.nama_lengkap` and `ParsedOrder.specimen_no`. **Populating those from this message would require asserting exactly the identity semantics §5.1 records as UNKNOWN.** Writing one today would therefore encode a guess into production code, and registering it would additionally need a `parser_key` and a configuration entry.
+
+The smallest honest next step is evidence, not code.
+
+### 8.4 Open extension point — `C` records
+
+All three `C` records in this capture are `C|1||`: structurally present, **payload empty**. Nothing is lost by the current model today, and nothing can be classified from them.
+
+`ParsedHL7` has no comment representation. If a future capture carries populated comments, the smallest safe extension is an inert carrier modelled on the existing `ParsedObxMetadata` — *"retained for future evidence-based classification… never interpreted by the current pipeline"* — not a parser or registry redesign. **That extension is recorded here, not designed here.**
+
+---
+
+## 9. Files
+
+| Path | Contents |
+|---|---|
+| [`FIELD_REPORT.md`](FIELD_REPORT.md) | Full imported survey report, with PHI redacted and superseded sections marked |
+| [`../../../backend/tests/fixtures/instruments/sysmex_xn550/patient_result_001.astm`](../../../backend/tests/fixtures/instruments/sysmex_xn550/patient_result_001.astm) | Redacted raw ASTM patient-result message, 2 824 bytes, 49 records |
+| [`../../../backend/tests/test_xn550_astm_contract.py`](../../../backend/tests/test_xn550_astm_contract.py) | Fixture contract — 16 tests, DB-free, no production code exercised (§8) |
+
+### 9.1 Fixture notes
+
+- **Redacted, per `docs/09` §12.4**, which permits only redacted or synthetic derivatives in this repository. Three PHI tokens are replaced with **length-preserving** `X` masks: patient name (5 occurrences), patient id (1), date of birth (1) — **43 bytes of 2 824**. Every delimiter, field position, record length, clinical value, unit, flag, parameter name and timestamp is **unchanged**.
+- **Line endings are bare `\r`, deliberately.** That is what the instrument sent. Read the file as **bytes**, not with universal newlines, or the record structure will be silently altered.
+- SHA-256, committed fixture: `2fcc8f38de8d6903595b5e876e00de352ace7005b805739486a22106ce543ad3`
+- SHA-256, unredacted original: `6f6cf24905eb0a0761f07e2ed534ea90374f039ad023afa6eb398401ec6742a8` — retained only in `D:\SurveyLIS`, outside this repository.
+- **It is a record-grammar fixture, not a transport fixture.** It carries no framing bytes and must not be used to justify a framing decision (see `FIELD_REPORT.md` §3.3).
+- Prototype scripts (`sysmex_xn550_tcp_listener.py`, `sysmex_parser.py`) remain in `D:\SurveyLIS` and are **not** imported.
