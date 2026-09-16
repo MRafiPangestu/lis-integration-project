@@ -12,6 +12,8 @@ Evidence labels follow `docs/09_PHYSICAL_INSTRUMENT_VALIDATION.md` §2 and are n
 
 On **15 September 2026** a Sysmex XN-550 was physically connected to a survey PC over Ethernet, configured for ASTM output, and observed to transmit a complete patient-result message. One message was captured and is committed here as a redacted test fixture.
 
+A **second session on 16 September 2026** performed structured physical validation with full packet capture and a byte-exact listener — see [`VALIDATION_2026-09-16.md`](VALIDATION_2026-09-16.md). It captured 7 messages (4 distinct payloads), settled the transport-role and framing questions for this configuration, and confirmed the `O`-4 identifier mapping against ground truth declared *before* transmission. **It closed no milestone and no release gate:** M9.2 and M9.3b are BC-5150-scoped and untouched, and `T-CORPUS-01-03` remains unsatisfied.
+
 This establishes the XN-550 as the **second instrument in this project with any field evidence at all** (after the Mindray BC-5150), and it answers the first question `docs/09` §11.3 says must be answered before parser work: *which side initiates the connection?*
 
 **What this does not do:** it does not make the XN-550 integrable today. There is no XN-550 parser, no configuration entry, and — most consequentially — the observed transport direction is the opposite of what the current LIS supports. See §6.
@@ -72,24 +74,39 @@ Each of these was observed on the physical instrument on 15 September 2026:
 
 ## 5. Evidence status table
 
+**Two sessions now exist.** Session 1 = the survey of 15 September 2026
+([`FIELD_REPORT.md`](FIELD_REPORT.md)). Session 2 = the physical validation of
+16 September 2026 ([`VALIDATION_2026-09-16.md`](VALIDATION_2026-09-16.md)), which
+resolved several items below and is the authoritative source for every row marked
+"session 2".
+
 | Item | Status | Note |
 |---|---|---|
-| TCP/IP connectivity | **VERIFIED** | Session 1 |
-| XN-550 → LIS transmission | **VERIFIED** | Instrument-initiated |
-| ASTM message reception | **VERIFIED** | Complete message, `L|1|N` terminator |
+| TCP/IP connectivity | **VERIFIED** | Sessions 1 and 2 |
+| XN-550 → LIS transmission | **VERIFIED** | Instrument-initiated; session 2 recorded the dial pattern (5 SYNs ~508 ms, ~60 s cycle) |
+| ASTM message reception | **VERIFIED** | Complete messages, `L|1|N` terminator |
 | `H`/`P`/`O`/`R`/`L` structure observed | **VERIFIED** | `C` records also present |
-| Raw patient-result capture | **VERIFIED** | 1 message; committed redacted |
-| Experimental ACK handling | **VERIFIED** | ACK-only, permissive, per chunk |
-| ASTM 1381-95 framing present or absent | **UNKNOWN / NOT CONFIRMED** | No pcap; artefact hand-transcribed |
-| NACK handling | **NOT FIELD-VERIFIED** | No NAK path exists in the prototype |
-| Whether XN-550 can accept inbound connections | **UNKNOWN / NOT CONFIRMED** | Client mode never succeeded |
+| Raw patient-result capture | **VERIFIED** | Session 1: 1 message. Session 2: 7 messages, 4 distinct payloads |
+| Experimental ACK handling | **VERIFIED** | ACK-only, permissive, **per socket read** — not per ASTM message |
+| ASTM 1381-95 framing in observed payloads | **VERIFIED — absent** *(this configuration only)* | Session 2, pcap + byte census across 7 messages. **Not a claim that the XN-550 never uses E1381** — other output settings untested |
+| Instrument's native E1381 handshake semantics | **NOT FIELD-VERIFIED** | Our ACK is application-level only |
+| NACK handling | **NOT FIELD-VERIFIED** | No NAK path exists in the tooling; never authorised |
+| Whether XN-550 accepts inbound connections **on port 5001** | **VERIFIED — it does not** | Session 2: LIS SYNs silently dropped, no RST. **Scope: port 5001 only** |
+| Whether XN-550 accepts inbound on any *other* port | **UNKNOWN / NOT CONFIRMED** | No port scan performed — not authorised, not appropriate |
+| Multiple messages per connection | **VERIFIED** | Session 2: 7 messages over one 41-minute session, no reconnect |
+| Persistent idle session, no heartbeat | **VERIFIED** | Session 2: connection held with 0 bytes exchanged |
+| Transmission/message control identifier | **VERIFIED — none exists** | `H`-3 … `H`-12 empty across 7 independent messages |
+| On-screen Sample No. → `O`-4 component 3 | **VERIFIED** | Session 2 GT-2, matched against ground truth declared **before** transmission |
+| Lab practice: Sample No. holds a personal name | **CANDIDATE** | One lab, one operator, two sessions. See §5.1 and the S1 hazard |
+| `R`-13 = analysis time, not transmission time | **VERIFIED** | Session 2 GT-2: ~16½ min between analysis and transmission |
+| On-screen sequence number transmitted? | **VERIFIED — it is not** | Session 2 GT-2: appears in no field |
+| Exact semantics of the patient identifier field (`P`-5) | **UNKNOWN / NOT CONFIRMED** | Populated in session 1, empty in session 2. See §5.1 |
+| Exact semantics of `O`-3 | **UNKNOWN / NOT CONFIRMED** | Empty in every message observed |
+| Genuine rerun behaviour | **NOT FIELD-VERIFIED** | Never performed |
 | Historical host query (LIS → instrument request) | **NOT FIELD-VERIFIED** | Never attempted |
 | Historical resend behaviour | **NOT FIELD-VERIFIED** | Never attempted |
 | ACK-timeout retransmission behaviour | **NOT FIELD-VERIFIED** | ACK never withheld |
-| Reconnect / idle-socket / connection-limit behaviour | **NOT FIELD-VERIFIED** | Not exercised |
-| Multiple messages per connection | **NOT FIELD-VERIFIED** | One message only |
-| Exact semantics of the patient identifier field | **UNKNOWN / NOT CONFIRMED** | See §5.1 |
-| Exact specimen / sample identifier semantics | **UNKNOWN / NOT CONFIRMED** | See §5.1 |
+| Reconnect / idle-socket / connection-limit behaviour | **NOT FIELD-VERIFIED** | Session-2 disconnects were cable events, **not** instrument behaviour |
 | QC message classification | **NOT FIELD-VERIFIED** | Zero QC captures |
 | Calibration classification | **NOT FIELD-VERIFIED** | Zero captures |
 | Maintenance / startup classification | **NOT FIELD-VERIFIED** | Zero captures |
@@ -132,9 +149,9 @@ This is the XN-550 equivalent of the identity question `docs/09` §10 raises for
 
 In the order they should be answered. Items 1 and 2 are the ones that can invalidate an integration approach, so they come before any parser work (`docs/09` §11.3).
 
-1. **Can the XN-550 accept an inbound TCP connection, or is it client-only?** Determines whether listener mode is a hard prerequisite or one of two options. **Blocks the transport decision.**
-2. **Is ASTM 1381-95 framing present on the wire?** Requires a packet capture (`docs/09` §12.3). **Blocks any transport implementation.**
-3. **Identity semantics** — what is `P`-5? Where does a specimen/tube barcode appear, if at all? Requires a corpus with known ground truth.
+1. ~~**Can the XN-550 accept an inbound TCP connection?**~~ **Answered for port 5001 by session 2** — it does not; the LIS's SYNs are silently dropped, so **stop condition S7 is met** and listener mode would be a prerequisite for this configuration. **Still open:** whether it accepts inbound on any *other* port. No port scan was performed.
+2. ~~**Is ASTM 1381-95 framing present on the wire?**~~ **Answered for this configuration by session 2** — no `STX`/`ETX`/`ENQ`/`EOT`/`ACK`/`NAK`/checksum bytes appear in any observed payload; records are `CR`-terminated. **Still open:** behaviour under other instrument output settings, and the instrument's native E1381 handshake semantics, which our application-level ACK cannot establish.
+3. **Identity semantics** — **partly answered.** `O`-4 component 3 is **VERIFIED** as the on-screen *Sample No.* (session 2 GT-2, pre-registered). **Still open:** what `P`-5 holds and why its population differs between sessions; what `O`-3 is intended for; and whether any specimen/tube barcode is transmitted at all. Requires a corpus with known ground truth.
 4. **ACK dependence** — what does the instrument do when an ACK is delayed, withheld, or replaced by a NAK? *(Same class of question as BC-5150 T-BC-T, which is gated on lab-management approval to withhold an ACK on a live instrument.)*
 5. **Retransmission and resend** — repeat-run vs retransmission, reconnect resend, ACK-timeout resend. **Feeds M9.2; does not resolve it.**
 6. **QC / calibration / maintenance / startup message shapes** — currently zero captures. **Feeds M9.3b; does not resolve it.**

@@ -15,6 +15,14 @@
 
 ## 0. How to read this document
 
+> **A second session has since taken place.** This document records **session 1**
+> (15 September 2026) and is left as the historical record of that survey. Several
+> questions it leaves open — the transport role, the presence of ASTM 1381-95
+> framing, and the meaning of `O`-4 — were addressed on **16 September 2026**; see
+> [`VALIDATION_2026-09-16.md`](VALIDATION_2026-09-16.md), which supersedes this
+> document wherever the two speak to the same question. Nothing below has been
+> rewritten to match it.
+
 ### 0.1 ⚠ This is a historical field-survey report, not an architecture decision
 
 > **The exploratory backend and database recommendations inside this report PRE-DATE the current `LIS_Project` architecture and are NOT authoritative for this repository.**
