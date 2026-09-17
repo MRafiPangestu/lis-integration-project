@@ -237,6 +237,7 @@ All three `C` records in this capture are `C|1||`: structurally present, **paylo
 | [`FIELD_REPORT.md`](FIELD_REPORT.md) | Full imported survey report, with PHI redacted and superseded sections marked |
 | [`VALIDATION_2026-09-16.md`](VALIDATION_2026-09-16.md) | Session 2 record — transport role, framing, `O`-4 mapping (with corrections dated 2026-09-17) |
 | [`VALIDATION_2026-09-17.md`](VALIDATION_2026-09-17.md) | Session 3 record — controlled retransmission, GT-3A, cross-day comparison, RECONNECT-01/02 |
+| [`M9.2_IMPLEMENTATION_CONTRACT.md`](M9.2_IMPLEMENTATION_CONTRACT.md) | Design-only implementation contract (2026-09-17): listener transport, CR-record message assembly, raw-first persistence, field confidence levels, unlinked-observation layer, identity and duplicate strategy, tests and acceptance criteria. Changes no code or schema; its "M9.2" label is **not** the `docs/07` BC-5150 deduplication milestone (see its §0.1) |
 | [`../../../backend/tests/fixtures/instruments/sysmex_xn550/patient_result_001.astm`](../../../backend/tests/fixtures/instruments/sysmex_xn550/patient_result_001.astm) | Redacted raw ASTM patient-result message, 2 824 bytes, 49 records |
 | [`../../../backend/tests/test_xn550_astm_contract.py`](../../../backend/tests/test_xn550_astm_contract.py) | Fixture contract — 16 tests, DB-free, no production code exercised (§8) |
 
