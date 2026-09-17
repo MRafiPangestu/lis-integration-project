@@ -8,11 +8,13 @@ deterministic shutdown.
 
 * ``client`` mode (the LIS dials the instrument): bound to its parser via the
   M8.3 parser registry — unchanged.
-* ``listener`` mode (the instrument dials the LIS): XN-550 G1 raw capture plus
-  envelope classification of each persisted raw message
-  (docs/instruments/sysmex_xn550/M9.2_IMPLEMENTATION_CONTRACT.md §19.4, §19.5).
-  Its parser is resolved through the same registry and must belong to the
-  ASTM protocol family; no observation rows and no clinical rows are created.
+* ``listener`` mode (the instrument dials the LIS): XN-550 raw capture, envelope
+  classification and byte-identity linking of each persisted raw message, plus
+  unlinked observation sets when the entry's ``ingestion_stage`` is
+  ``observations`` (G2)
+  (docs/instruments/sysmex_xn550/M9.2_IMPLEMENTATION_CONTRACT.md §19.4, §19.5,
+  §19.8). Its parser is resolved through the same registry and must belong to
+  the ASTM protocol family; no clinical rows are ever created.
 
 Every parser key is checked against its registered protocol family at startup,
 so an ASTM parser can never be bound to the HL7/MLLP client path or vice versa.
@@ -107,6 +109,7 @@ def worker_factory(runtime: RuntimeInstrument):
             policy=resolve_xn550_policy(runtime.config.classification_policy),
             parser_key=runtime.config.parser_key,
             parser_version=XN550_PARSER_VERSION,
+            ingestion_stage=runtime.config.ingestion_stage,
         )
         return build_listener_worker(
             runtime,

@@ -1456,7 +1456,7 @@ test_runs.is_final
 
 # 29. Provisioning & Migration Lifecycle
 
-Sejak M9.0, database LIS dapat di-*provision* sepenuhnya melalui Alembic. *Migration chain* memiliki **satu root** (`8e973e84a9d7`, disebut **R0**) dan **satu head** (`5d2e8b7c41a9`, sejak XN-550 Phase 1):
+Sejak M9.0, database LIS dapat di-*provision* sepenuhnya melalui Alembic. *Migration chain* memiliki **satu root** (`8e973e84a9d7`, disebut **R0**) dan **satu head** (`8a3023944bd1`, sejak XN-550 G2):
 
 ```text
 8e973e84a9d7   R0 — baseline skema legacy pra-M1 (evidence-derived)
@@ -1475,7 +1475,9 @@ c5465739f048   message classification (message_class, classification_rule)
      ↓
 28aa370f5dbe   M9.1b — tabel audit_events (atribusi aktor)
      ↓
-5d2e8b7c41a9   XN-550 Phase 1 — instrument_sessions + provenance raw capture   ← HEAD
+5d2e8b7c41a9   XN-550 Phase 1 — instrument_sessions + provenance raw capture
+     ↓
+8a3023944bd1   XN-550 G2 — instrument_result_sets + instrument_result_items   ← HEAD
 ```
 
 Bagian ini menggantikan asumsi lama bahwa "SQL awal" harus dieksekusi manual sebelum migrasi. R0 kini merepresentasikan skema legacy tersebut di dalam *migration graph* yang dikelola versi (commit `d273e7f`), dan `alembic upgrade head` dari database kosong menghasilkan skema final tanpa langkah manual. `27e00bcff992` (M9.1a), `28aa370f5dbe` (M9.1b) dan `5d2e8b7c41a9` (XN-550 Phase 1) ditulis manual (*hand-authored*), bukan hasil `--autogenerate` — lihat Bagian 33, 34 dan 35 untuk alasannya.
@@ -1492,7 +1494,7 @@ Jalur *fresh-install* yang otoritatif:
    alembic upgrade head
    ```
 
-4. Hasil: seluruh chain `R0 → b1f9dbe772fa → 4a24240f8c32 → 621889e316b5 → c5465739f048 → 4aff9e134f16 → 27e00bcff992 → 28aa370f5dbe → 5d2e8b7c41a9` diterapkan; tabel `alembic_version` berisi `5d2e8b7c41a9`.
+4. Hasil: seluruh chain `R0 → b1f9dbe772fa → 4a24240f8c32 → 621889e316b5 → c5465739f048 → 4aff9e134f16 → 27e00bcff992 → 28aa370f5dbe → 5d2e8b7c41a9 → 8a3023944bd1` diterapkan; tabel `alembic_version` berisi `8a3023944bd1`.
 5. **(M9.1a)** Buat akun ADMIN pertama secara interaktif:
 
    ```bash
@@ -1503,7 +1505,7 @@ Jalur *fresh-install* yang otoritatif:
 
 Database PostgreSQL yang benar-benar kosong kini dapat di-*provision* **sepenuhnya melalui Alembic**. Operator **tidak** perlu — dan tidak boleh diinstruksikan — menjalankan `backend/schema/legacy_schema.sql` secara manual sebagai bagian dari *fresh-install* normal. File tersebut adalah artefak *evidence*, bukan perintah provisioning (lihat Bagian 29.5).
 
-Verifikasi otomatis: `backend/tests/test_migration_chain.py` (commit `b7c3d0e`; diperluas pada M9.1a untuk tabel `users`, pada M9.1b untuk tabel `audit_events`, dan pada XN-550 Phase 1 untuk `instrument_sessions` serta kolom *raw capture* `instrument_messages`) menjalankan `alembic upgrade head` terhadap database sekali-pakai dan memeriksa revisi akhir serta invariant struktural skema (jumlah tabel/constraint/index, keberadaan objek M1/M8.2/M8.4/M9.1a/M9.1b/XN-550 Phase 1, dan absennya objek yang belum di-remediasi).
+Verifikasi otomatis: `backend/tests/test_migration_chain.py` (commit `b7c3d0e`; diperluas pada M9.1a untuk tabel `users`, pada M9.1b untuk tabel `audit_events`, pada XN-550 Phase 1 untuk `instrument_sessions` serta kolom *raw capture* `instrument_messages`, dan pada XN-550 G2 untuk kedua tabel observasi — termasuk uji paritas ORM/migrasi dan *downgrade* G2) menjalankan `alembic upgrade head` terhadap database sekali-pakai dan memeriksa revisi akhir serta invariant struktural skema (jumlah tabel/constraint/index, keberadaan objek M1/M8.2/M8.4/M9.1a/M9.1b/XN-550 Phase 1/XN-550 G2, dan absennya objek yang belum di-remediasi).
 
 > **Catatan F-2.** *Fresh-install chain* saat ini menghasilkan `patients.nomor_rm` sebagai `NOT NULL` tetapi **belum** `UNIQUE`. Constraint `UNIQUE(nomor_rm)` pada Bagian 18.2 adalah desain target; migration untuk menambahkannya adalah **remediasi terpisah yang belum ada di chain**. M9.0 tidak menyelesaikan item ini, dan M9.1a maupun M9.1b juga tidak menyentuhnya — lihat Bagian 33 dan Bagian 34.
 
@@ -1543,7 +1545,7 @@ Jalur migrasi:
 
 ## 29.3. Database development yang sudah ada
 
-`lis_marina_permata_dev` sudah berada pada `5d2e8b7c41a9` (HEAD, sejak XN-550 Phase 1 — sebelumnya `28aa370f5dbe` pada M9.1b, `27e00bcff992` pada M9.1a, dan `4aff9e134f16` sebelum itu). R0 adalah **leluhur** revisi tersebut, bukan migrasi yang perlu diputar ulang. **Jangan** menjalankan R0 langsung terhadap database ini. Jika ada revisi baru di masa depan, `alembic upgrade head` biasa akan melanjutkan dari revisi saat ini.
+`lis_marina_permata_dev` berada pada `5d2e8b7c41a9` (XN-550 Phase 1 — sebelumnya `28aa370f5dbe` pada M9.1b, `27e00bcff992` pada M9.1a, dan `4aff9e134f16` sebelum itu). Revisi `8a3023944bd1` (XN-550 G2) **belum** diterapkan di sana: jalankan `alembic upgrade head` terhadap database ini saat siap. R0 adalah **leluhur** revisi tersebut, bukan migrasi yang perlu diputar ulang. **Jangan** menjalankan R0 langsung terhadap database ini. Jika ada revisi baru di masa depan, `alembic upgrade head` biasa akan melanjutkan dari revisi saat ini.
 
 ## 29.4. Database PoC stabil / sumber evidence
 
@@ -1599,7 +1601,8 @@ Nama lama "legacy_baseline" pada revisi ini bersifat historis dan **tidak boleh*
 | `4aff9e134f16` | empat index query untuk M8.4 order overview |
 | `27e00bcff992` | M9.1a — tabel `users` (autentikasi API); lihat Bagian 33 |
 | `28aa370f5dbe` | M9.1b — tabel `audit_events` (atribusi aktor); lihat Bagian 34 |
-| `5d2e8b7c41a9` (HEAD) | XN-550 Phase 1 — tabel `instrument_sessions` dan kolom provenance *raw capture* (nullable) pada `instrument_messages`; lihat Bagian 35 |
+| `5d2e8b7c41a9` | XN-550 Phase 1 — tabel `instrument_sessions` dan kolom provenance *raw capture* (nullable) pada `instrument_messages`; lihat Bagian 35 |
+| `8a3023944bd1` (HEAD) | XN-550 G2 — tabel `instrument_result_sets` dan `instrument_result_items` (observasi tak tertaut); lihat Bagian 36 |
 
 ## 29.7. Peringatan operasional
 
@@ -1802,6 +1805,7 @@ Rincian desain dan verifikasi lengkap: `M9.1b_AUDIT_ATTRIBUTION_DESIGN.md`.
 
 ---
 
+
 # 35. Instrument Sessions & Raw Capture Provenance (XN-550 Phase 1)
 
 **Tujuan.** Menyimpan *raw bytes* yang persis dan provenance transport untuk instrumen mode *listener* (Sysmex XN-550, G1 `raw_only`). Kontrak lengkap: `docs/instruments/sysmex_xn550/M9.2_IMPLEMENTATION_CONTRACT.md` §9, §19.4 dan §19.5. Ini adalah *technical traceability* (Bagian 16.3) — **bukan** data klinis: tidak ada baris `patients` / `visits` / `orders` / `test_runs` / `results` yang dibuat dari data XN-550.
@@ -1823,4 +1827,30 @@ Sejak Phase 2 (`app/integration/xn550_ingestion.py`, tanpa migrasi baru), tahap 
 - `error_detail`: token, dengan indeks record/field bila ada, tanpa teks field;
 - `parser_key` (`xn550_astm_e1394`) dan `parser_version` (`xn550-astm-1.0.0`).
 
-Baris yang tertinggal `Pending` akibat crash diklasifikasikan saat listener start. `duplicate_of_message_id` tetap `NULL`: penautan byte-identik baru dilakukan oleh tahap T2 G2, yang belum diimplementasikan karena OD-XN-3 masih terbuka.
+Baris yang tertinggal `Pending` akibat crash diklasifikasikan saat listener start.
+
+Sejak XN-550 G2 (Bagian 36), tahap T2 yang sama juga mengisi `duplicate_of_message_id` untuk pengiriman ulang yang identik per byte — pada **kedua** `ingestion_stage` — dan menulis catatan `Redelivery: byte-identical to message <id>` pada `error_detail`. Penautan hanya menunjuk ke `id_message` yang lebih kecil; baris yang sudah diklasifikasikan sebelum G2 tidak pernah di-*backfill*.
+
+
+---
+
+# 36. Instrument Result Sets & Items — Observasi Tak Tertaut (XN-550 G2)
+
+**Tujuan.** Menyimpan hasil XN-550 yang sudah dinormalisasi sebagai **observasi tak tertaut**: satu *result set* per pengiriman yang lolos amplop (`XN550_ENVELOPE_CONFORMANT`) dan satu *item* per record `R`. Kontrak lengkap: `docs/instruments/sysmex_xn550/M9.2_IMPLEMENTATION_CONTRACT.md` §10, §11.1, §13 dan §19.8. Ini **bukan** data klinis: tidak ada baris `patients` / `visits` / `orders` / `test_runs` / `results` yang dibuat, dan tidak ada *foreign key* ke tabel klinis mana pun.
+
+**Batas identitas.** `sample_label` (Sample No. yang diketik operator) adalah **label tampilan saja** — bukan kunci pasien, spesimen, kunjungan atau order — dan sengaja **tidak** di-index, di-*filter*, di-*sort* maupun di-*unique*-kan. `association_status` selalu `UNRESOLVED` (dijaga `CHECK`). `source_r_sequence` adalah nomor urut record `R` ASTM di dalam satu pesan, bukan nomor urut pada layar instrumen.
+
+**Migrasi.** `backend/alembic/versions/8a3023944bd1_xn550_g2_unlinked_observations.py`, `down_revision = "5d2e8b7c41a9"`, ditulis manual (alasan sama dengan Bagian 33/34/35). Aditif saja: dua tabel baru; **tidak ada** perubahan pada tabel yang sudah ada dan tidak ada *backfill*. *Downgrade* menghapus tepat kedua tabel beserta index dan sequence-nya, dan diuji oleh `backend/tests/test_migration_chain.py` — termasuk uji paritas ORM/migrasi khusus untuk kedua tabel ini.
+
+**`instrument_result_sets`** (`app/models/instrument_result_set.py`) — satu baris per pengiriman yang memiliki *result set*: `id_message` (FK, **UNIQUE**), `id_instrument` (FK), `received_at` (jam LIS), `analysis_at` (jam instrumen, `R`-13), `sample_label`, `association_status`, `analysis_fingerprint` (`CHAR(64)`) dan `fingerprint_version`, `duplicate_status` dengan `possible_duplicate_of` (FK ke tabel yang sama), `p5_populated` / `p8_populated` (hanya penanda keberadaan, **tidak pernah** diekspos), `item_count`, `non_n_flag_item_count`, `image_reference_count`, serta `created_at`.
+
+**`instrument_result_items`** (`app/models/instrument_result_item.py`) — satu baris per record `R`: `id_result_set` (FK), `source_record_index`, `source_offset_start` / `source_offset_end` (offset byte relatif terhadap `raw_bytes`, tanpa CR penutup), `source_r_sequence`, `item_kind`, `test_code`, `test_code_qualifier`, `value_raw`, `units_raw`, `reference_range_raw`, `abnormal_flag_raw`, `result_status_raw`. Lebar kolom sengaja sama dengan `results`.
+
+**Constraint.**
+- `UNIQUE (id_message)` pada *set*; `UNIQUE (id_result_set, source_record_index)` dan `UNIQUE (id_result_set, test_code)` pada *item*.
+- Empat *foreign key*, semuanya `ON DELETE RESTRICT` (baris bersifat *append-only*; Bagian 19 menolak *cascade*).
+- Empat `CHECK` keselamatan: `association_status = 'UNRESOLVED'`; konsistensi `duplicate_status` ↔ `possible_duplicate_of` (dan penunjuk selalu ke id yang lebih kecil); domain `item_kind`; serta "referensi gambar tidak pernah menyimpan nilai" (`value_raw IS NULL`). Ini menyimpang dari konvensi "enum app-level tanpa CHECK" secara sadar: keempatnya menjaga invarian keselamatan, bukan kosakata tampilan.
+
+**Index.** `(id_instrument, fingerprint_version, analysis_fingerprint, id_result_set)` untuk pencarian sidik jari; `(received_at DESC, id_result_set DESC)` dan `(id_instrument, received_at DESC, id_result_set DESC)` untuk daftar API. **Sengaja tidak ada** index pada `sample_label`, tidak ada index `(id_result_set)` terpisah pada *item* (sudah dilayani index bawaan `UNIQUE`), dan tidak ada `UNIQUE` pada kolom konten mana pun.
+
+**Status.** Tabel ini hanya terisi bila `ingestion_stage = "observations"` (G2). Selama *soak* G1, konfigurasi produksi tetap `raw_only` sehingga kedua tabel tetap kosong di produksi (kontrak §19.7).

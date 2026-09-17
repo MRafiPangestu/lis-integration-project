@@ -9,6 +9,8 @@ from app.models.visit import Visit
 from app.models.order import Order
 from app.models.instrument_session import InstrumentSession
 from app.models.instrument_message import InstrumentMessage
+from app.models.instrument_result_set import InstrumentResultSet
+from app.models.instrument_result_item import InstrumentResultItem
 from app.models.test_run import TestRun
 from app.models.result import Result
 from app.models.user import User
@@ -26,6 +28,8 @@ __all__ = [
     "Order",
     "InstrumentSession",
     "InstrumentMessage",
+    "InstrumentResultSet",
+    "InstrumentResultItem",
     "TestRun",
     "Result",
     "User",

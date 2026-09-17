@@ -145,3 +145,80 @@ export interface LoginResponse {
   token_type: string
   user: UserPublic
 }
+
+// XN-550 unlinked instrument results (G2) — mirrors app/schemas/instrument_results.py
+// exactly (contract Appendix B). These types extend no clinical type: they are
+// never a patient, visit, order, test run or result. `sample_label` is a display
+// label only; `association_status` is always "UNRESOLVED"; `r_sequence` is the
+// ASTM result-record sequence (ordering only, never displayed).
+export interface InstrumentResultSetSummary {
+  id_result_set: number
+  id_instrument: number
+  instrument_name: string
+  received_at: string
+  analysis_at: string
+  sample_label: string
+  association_status: string
+  duplicate_status: string
+  possible_duplicate_of: number | null
+  item_count: number
+  non_n_flag_item_count: number
+  image_reference_count: number
+  delivery_count: number
+}
+
+export interface PaginatedInstrumentResultSetResponse {
+  items: InstrumentResultSetSummary[]
+  page: number
+  page_size: number
+  total: number
+  identity_notice: string
+}
+
+export interface InstrumentResultItemResponse {
+  r_sequence: number
+  test_code: string
+  item_kind: string
+  value: string | null
+  units: string | null
+  reference_range: string | null
+  abnormal_flag: string | null
+  result_status: string
+}
+
+export interface InstrumentResultDeliveryResponse {
+  id_message: number
+  received_at: string
+  id_session: number
+  session_opened_at: string
+  read_count: number
+}
+
+export interface InstrumentResultProvenanceResponse {
+  id_message: number
+  parser_key: string
+  parser_version: string
+  raw_sha256_prefix: string
+  raw_length: number
+  ack_policy: string
+}
+
+export interface InstrumentResultSetDetail {
+  id_result_set: number
+  id_instrument: number
+  instrument_name: string
+  received_at: string
+  analysis_at: string
+  sample_label: string
+  association_status: string
+  duplicate_status: string
+  possible_duplicate_of: number | null
+  item_count: number
+  non_n_flag_item_count: number
+  image_reference_count: number
+  delivery_count: number
+  identity_notice: string
+  items: InstrumentResultItemResponse[]
+  deliveries: InstrumentResultDeliveryResponse[]
+  provenance: InstrumentResultProvenanceResponse
+}

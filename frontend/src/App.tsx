@@ -3,6 +3,9 @@ import { AppShell } from "./components/layout/AppShell";
 import { Sidebar } from "./components/layout/Sidebar";
 import { OrderDetailView } from "./components/detail/OrderDetailView";
 import { OrderOverviewView } from "./components/overview/OrderOverviewView";
+import { InstrumentResultDetailView } from "./components/instrument-results/InstrumentResultDetailView";
+import { InstrumentResultsListView } from "./components/instrument-results/InstrumentResultsListView";
+import { MainViewSwitch, type MainView } from "./components/layout/MainViewSwitch";
 import type { OverviewDetailTarget } from "./components/overview/OrderOverviewView";
 import { todayRange } from "./components/overview/dateRange";
 import { useAuth } from "./components/auth/AuthProvider";
@@ -38,6 +41,15 @@ function AuthenticatedApp() {
   const [dateTo, setDateTo] = useState(initialRange[1]);
   const [page, setPage] = useState(1);
 
+  // XN-550 unlinked instrument results (G2): a separate view with its own
+  // received-at window and page. Never merged with the order worklist.
+  const [mainView, setMainView] = useState<MainView>("worklist");
+  const [unlinkedRange] = useState(todayRange);
+  const [unlinkedFrom, setUnlinkedFrom] = useState(unlinkedRange[0]);
+  const [unlinkedTo, setUnlinkedTo] = useState(unlinkedRange[1]);
+  const [unlinkedPage, setUnlinkedPage] = useState(1);
+  const [unlinkedDetailId, setUnlinkedDetailId] = useState<number | null>(null);
+
   // Legacy MRN-search path (kept for backwards-compatible detail behaviour).
   const [searchInput, setSearchInput] = useState("");
   const [searchNomorRm, setSearchNomorRm] = useState<string | null>(null);
@@ -54,6 +66,21 @@ function AuthenticatedApp() {
     setDetailTarget(null);
     setSearchNomorRm(null);
     setPage(1);
+    setUnlinkedPage(1);
+    setUnlinkedDetailId(null);
+  };
+
+  const handleMainViewChange = (view: MainView) => {
+    setMainView(view);
+    setDetailTarget(null);
+    setSearchNomorRm(null);
+    setUnlinkedDetailId(null);
+  };
+
+  const handleUnlinkedRangeChange = (nextFrom: string, nextTo: string) => {
+    setUnlinkedFrom(nextFrom);
+    setUnlinkedTo(nextTo);
+    setUnlinkedPage(1);
   };
 
   const handleDateChange = (nextFrom: string, nextTo: string) => {
@@ -113,8 +140,35 @@ function AuthenticatedApp() {
         message="Select an instrument to view its worklist."
       />
     );
+  } else if (mainView === "unlinked") {
+    view = (
+      <>
+        <MainViewSwitch active={mainView} onChange={handleMainViewChange} />
+        {unlinkedDetailId !== null ? (
+          <InstrumentResultDetailView
+            key={`unlinked:${unlinkedDetailId}`}
+            idResultSet={unlinkedDetailId}
+            onBack={() => setUnlinkedDetailId(null)}
+            onOpenResult={setUnlinkedDetailId}
+          />
+        ) : (
+          <InstrumentResultsListView
+            instrumentId={selectedInstrumentId}
+            instrumentName={activeInstrument.nama_mesin}
+            receivedFrom={unlinkedFrom}
+            receivedTo={unlinkedTo}
+            page={unlinkedPage}
+            onRangeChange={handleUnlinkedRangeChange}
+            onPageChange={setUnlinkedPage}
+            onOpenResult={setUnlinkedDetailId}
+          />
+        )}
+      </>
+    );
   } else {
     view = (
+      <>
+      <MainViewSwitch active={mainView} onChange={handleMainViewChange} />
       <OrderOverviewView
         instrumentId={selectedInstrumentId}
         instrumentName={activeInstrument.nama_mesin}
@@ -130,6 +184,7 @@ function AuthenticatedApp() {
           onSearchSubmit: handleSearchSubmit,
         }}
       />
+      </>
     );
   }
 

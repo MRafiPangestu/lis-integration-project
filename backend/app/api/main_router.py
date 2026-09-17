@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.routers import account, instruments, patients, results, test_runs, users
+from app.api.routers import account, instrument_results, instruments, patients, results, test_runs, users
 
 # Every router mounted here is protected: app.main mounts this whole
 # APIRouter under "/api" with `dependencies=[Depends(get_current_user)]`
@@ -11,6 +11,8 @@ api_router.include_router(test_runs.router, tags=["Test Runs"])
 api_router.include_router(results.router)
 api_router.include_router(patients.router)
 api_router.include_router(instruments.router)
+# XN-550 unlinked instrument results (G2): GET only, protected by the /api mount.
+api_router.include_router(instrument_results.router)
 api_router.include_router(account.router)
 api_router.include_router(users.router)
 

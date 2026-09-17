@@ -29,10 +29,13 @@ LISTENER_APPROVED_SCOPES = frozenset({("Sysmex XN-550", 5001)})
 # FIELD-VERIFIED and stays unavailable until OD-XN-4.
 LISTENER_ACK_POLICIES = frozenset({"ack_per_read_on_receive"})
 
-# Listener ingestion stages implemented in this phase (contract §19.3). Only
-# G1 `raw_only` (raw capture + envelope classification); `observations` (G2) is
-# not implemented and OD-XN-3 is open.
-LISTENER_INGESTION_STAGES = frozenset({"raw_only"})
+# Listener ingestion stages (contract §19.3). G1 `raw_only`: raw capture, envelope
+# classification and byte-identity linking. G2 `observations`: additionally the
+# unlinked observation sets (OD-XN-3 approved). There is no default: a listener
+# entry must name its stage explicitly. Production XN-550 stays `raw_only` until
+# the 14-day G1 soak exit criteria pass (contract §19.7); nothing switches the
+# stage automatically.
+LISTENER_INGESTION_STAGES = frozenset({"raw_only", "observations"})
 
 # Parser keys and classification policies a listener-mode instrument may name
 # (contract §4.2, §19.1). Only the dedicated XN-550 parser exists; there is no
@@ -176,8 +179,9 @@ class InstrumentConfig(BaseModel):
         if self.ingestion_stage not in LISTENER_INGESTION_STAGES:
             raise ValueError(
                 f"listener ingestion_stage {self.ingestion_stage!r} is not available. "
-                f"Implemented: {sorted(LISTENER_INGESTION_STAGES)} (G1 raw capture). "
-                "'observations' (G2) is not implemented; OD-XN-3 is open."
+                f"Required: one of {sorted(LISTENER_INGESTION_STAGES)} "
+                "('raw_only' = G1 raw capture; 'observations' = G2 unlinked observations). "
+                "Production XN-550 stays 'raw_only' until the G1 soak exit criteria pass."
             )
         if self.parser_key not in LISTENER_PARSER_KEYS:
             raise ValueError(

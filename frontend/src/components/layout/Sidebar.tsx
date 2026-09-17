@@ -13,17 +13,26 @@ export interface SidebarProps {
 }
 
 // Mirrors StickyStatusBar.statusColor(): the same three-value vocabulary plus
-// the backend's UNKNOWN fallback. StickyStatusBar itself is left untouched.
+// the backend's UNKNOWN fallback, and LISTENING for a listener-mode instrument
+// (XN-550) that is bound but has no active session (contract §4.10).
+// StickyStatusBar itself is left untouched.
 function statusColor(status: string): string {
   switch (status.trim().toUpperCase()) {
     case "CONNECTED":
       return "var(--color-flag-normal)";
+    case "LISTENING":
+      return "var(--color-primary)";
     case "RECONNECTING":
     case "DISCONNECTED":
       return "var(--color-flag-low)";
     default:
       return "var(--color-text-secondary)";
   }
+}
+
+// Human-readable status text. Only LISTENING needs an explanation.
+function statusLabel(status: string): string {
+  return status === "LISTENING" ? "Listening — no instrument session" : status;
 }
 
 function normalizeStatus(status: string): string {
@@ -253,7 +262,7 @@ export function Sidebar({
                   )
                 }
                 aria-current={isActive ? "page" : undefined}
-                title={`${instrument.nama_mesin} — ${status}`}
+                title={`${instrument.nama_mesin} — ${statusLabel(status)}`}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -291,7 +300,7 @@ export function Sidebar({
                 />
                 {collapsed ? (
                   <span style={srOnly}>
-                    {instrument.nama_mesin} — {status}
+                    {instrument.nama_mesin} — {statusLabel(status)}
                   </span>
                 ) : (
                   <span style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
@@ -313,7 +322,7 @@ export function Sidebar({
                         opacity: 0.8,
                       }}
                     >
-                      {status}
+                      {statusLabel(status)}
                     </span>
                   </span>
                 )}

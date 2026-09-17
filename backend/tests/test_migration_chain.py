@@ -5,15 +5,15 @@ repository-resident test: it provisions a **disposable** PostgreSQL database
 from empty using the real Alembic environment (``python -m alembic upgrade``),
 then asserts the resulting revision and structural schema invariants.
 
-Scope: upgrade / provisioning, plus the downgrades M9.1a, M9.1b and XN-550
-Phase 1 add.
+Scope: upgrade / provisioning, plus the downgrades M9.1a, M9.1b, XN-550
+Phase 1 and XN-550 G2 add, and ORM/migration parity for the G2 tables.
 
 * This is NOT a general downgrade test. ``b1f9dbe772fa.downgrade()`` is a
   known separate defect (unnamed-FK drops), still untested here; R0 downgrade
   was validated separately in scratch. ``27e00bcff992`` (M9.1a ``users``),
-  ``28aa370f5dbe`` (M9.1b ``audit_events``) and ``5d2e8b7c41a9`` (XN-550
-  Phase 1 raw capture) are the exceptions — their downgrades are real and are
-  exercised below.
+  ``28aa370f5dbe`` (M9.1b ``audit_events``), ``5d2e8b7c41a9`` (XN-550
+  Phase 1 raw capture) and ``8a3023944bd1`` (XN-550 G2 unlinked observations)
+  are the exceptions — their downgrades are real and are exercised below.
 * This test does NOT create, fix or assert-away F-2
   (``UNIQUE(patients.nomor_rm)``). It asserts F-2 stays **absent**, documenting
   that the chain reproduces the fresh-install schema minus that pending
@@ -66,7 +66,8 @@ PG = dict(
 
 R0 = "8e973e84a9d7"
 M9_1B = "28aa370f5dbe"
-HEAD = "5d2e8b7c41a9"
+XN550_PHASE1 = "5d2e8b7c41a9"
+HEAD = "8a3023944bd1"
 EXPECTED_CHAIN = [
     R0,
     "b1f9dbe772fa",
@@ -76,6 +77,7 @@ EXPECTED_CHAIN = [
     "4aff9e134f16",
     "27e00bcff992",
     M9_1B,
+    XN550_PHASE1,
     HEAD,
 ]
 
@@ -473,6 +475,8 @@ _FINAL_TABLES = {
     "audit_events",
     "doctors",
     "instrument_messages",
+    "instrument_result_items",
+    "instrument_result_sets",
     "instrument_sessions",
     "instruments",
     "orders",
@@ -489,6 +493,8 @@ _FINAL_SEQUENCES = {f"{t}_id_{c}_seq" for t, c in [
     ("audit_events", "audit"),
     ("doctors", "dokter"),
     ("instrument_messages", "message"),
+    ("instrument_result_items", "item"),
+    ("instrument_result_sets", "result_set"),
     ("instrument_sessions", "session"),
     ("instruments", "instrument"),
     ("orders", "order"),
@@ -515,6 +521,29 @@ _XN550_PHASE1_INDEXES = {
     "idx_instrument_messages_instrument_sha256",
     "idx_instrument_messages_instrument_received",
     "idx_instrument_messages_duplicate_of",
+}
+_XN550_G2_TABLES = {"instrument_result_sets", "instrument_result_items"}
+_XN550_G2_INDEX_DEFS = {
+    "idx_instrument_result_sets_fingerprint": (
+        "(id_instrument, fingerprint_version, analysis_fingerprint, id_result_set)"
+    ),
+    "idx_instrument_result_sets_received": "(received_at DESC, id_result_set DESC)",
+    "idx_instrument_result_sets_instrument_received": "(id_instrument, received_at DESC, id_result_set DESC)",
+}
+_XN550_G2_CONSTRAINTS = {
+    "instrument_result_sets_pkey",
+    "uk_instrument_result_sets_id_message",
+    "fk_instrument_result_sets_id_message_instrument_messages",
+    "fk_instrument_result_sets_id_instrument_instruments",
+    "fk_instrument_result_sets_possible_duplicate_of",
+    "ck_instrument_result_sets_association_status",
+    "ck_instrument_result_sets_duplicate_state",
+    "instrument_result_items_pkey",
+    "uk_instrument_result_items_set_record",
+    "uk_instrument_result_items_set_test_code",
+    "fk_instrument_result_items_id_result_set",
+    "ck_instrument_result_items_item_kind",
+    "ck_instrument_result_items_value_by_kind",
 }
 _M8_4_INDEXES = {
     "ix_test_runs_id_instrument_id_order",
@@ -563,14 +592,20 @@ def test_fresh_install_constraint_and_index_counts(scratch_at_head: str) -> None
     # idx_instrument_sessions_instrument_opened) and 13 nullable columns on
     # `instrument_messages` (+2 FK, +1 UNIQUE uk_instrument_messages_session_offset
     # with its backing index, +2 CHECK, +3 non-unique indexes).
+    # XN-550 G2 (8a3023944bd1) adds `instrument_result_sets` (+1 PK, +1 UNIQUE
+    # id_message, +3 FK ON DELETE RESTRICT, +2 CHECK, +16 NOT NULL columns, +5
+    # indexes: pkey, the UNIQUE backing index and three non-unique indexes) and
+    # `instrument_result_items` (+1 PK, +2 UNIQUE, +1 FK ON DELETE RESTRICT,
+    # +2 CHECK, +9 NOT NULL columns, +3 indexes: pkey and two UNIQUE backing
+    # indexes; deliberately no separate (id_result_set) index).
     # Numbers below are measured against the real migration output on a
     # throwaway scratch database, not estimated.
-    assert snap.count("p") == 14
-    assert snap.count("u") == 7
-    assert snap.count("f") == 14
-    assert snap.count("c") == 2
-    assert len(snap.not_null_columns()) == 70
-    assert len(snap.index_names()) == 32
+    assert snap.count("p") == 16
+    assert snap.count("u") == 10
+    assert snap.count("f") == 18
+    assert snap.count("c") == 6
+    assert len(snap.not_null_columns()) == 95
+    assert len(snap.index_names()) == 40
 
 
 def test_fresh_install_has_m1_m82_m84_objects(scratch_at_head: str) -> None:
@@ -681,6 +716,105 @@ def test_fresh_install_has_m1_m82_m84_objects(scratch_at_head: str) -> None:
     )
 
 
+def test_fresh_install_has_xn550_g2_observation_objects(scratch_at_head: str) -> None:
+    """8a3023944bd1: XN-550 G2 unlinked observations (contract §10.2, §10.3)."""
+    snap = SchemaSnapshot(scratch_at_head)
+    assert _XN550_G2_TABLES <= snap.tables
+    for (table, column), info in snap.columns.items():
+        if table == "instrument_result_sets":
+            assert info["nullable"] is (column == "possible_duplicate_of"), column
+        if table == "instrument_result_items":
+            nullable = column in {
+                "test_code_qualifier", "value_raw", "units_raw", "reference_range_raw", "abnormal_flag_raw",
+            }
+            assert info["nullable"] is nullable, column
+    assert snap.columns[("instrument_result_sets", "sample_label")]["len"] == 100
+    assert snap.columns[("instrument_result_sets", "analysis_fingerprint")]["len"] == 64
+    assert snap.columns[("instrument_result_sets", "fingerprint_version")]["type"] == "integer"
+    assert snap.columns[("instrument_result_items", "source_r_sequence")]["type"] == "integer"
+
+    g2_constraints = {c[0]: c for c in snap.constraints if c[1] in _XN550_G2_TABLES}
+    assert set(g2_constraints) == _XN550_G2_CONSTRAINTS
+    fks = [c for c in g2_constraints.values() if c[2] == "f"]
+    assert len(fks) == 4 and all("ON DELETE RESTRICT" in c[3] for c in fks)
+    referenced = {c[3].split("REFERENCES ", 1)[1].split("(", 1)[0] for c in fks}
+    assert referenced == {"instrument_messages", "instruments", "instrument_result_sets"}, referenced
+    assert "'UNRESOLVED'" in g2_constraints["ck_instrument_result_sets_association_status"][3]
+    duplicate_state = g2_constraints["ck_instrument_result_sets_duplicate_state"][3]
+    assert "possible_duplicate_of < id_result_set" in duplicate_state
+    value_rule = g2_constraints["ck_instrument_result_items_value_by_kind"][3]
+    assert "IMAGE_REFERENCE" in value_rule and "value_raw IS NULL" in value_rule
+
+    g2_indexes = {
+        name: (unique, definition)
+        for table, name, unique, definition in snap.indexes
+        if table in _XN550_G2_TABLES
+    }
+    assert set(g2_indexes) == set(_XN550_G2_INDEX_DEFS) | {
+        "instrument_result_sets_pkey", "uk_instrument_result_sets_id_message",
+        "instrument_result_items_pkey", "uk_instrument_result_items_set_record",
+        "uk_instrument_result_items_set_test_code",
+    }
+    for name, columns in _XN550_G2_INDEX_DEFS.items():
+        unique, definition = g2_indexes[name]
+        assert not unique and definition.endswith(columns), (name, definition)
+    # contract §12.3 / AC-XN-18: nothing indexes or constrains the display label,
+    # and no content column is unique.
+    assert not any("sample_label" in definition for _, definition in g2_indexes.values())
+    assert not any("sample_label" in c[3] for c in g2_constraints.values())
+    for column in ("analysis_fingerprint", "analysis_at", "received_at"):
+        assert not any(unique and column in definition for unique, definition in g2_indexes.values()), column
+
+
+def _scratch_from_orm_models(name: str) -> None:
+    """Create *name* and build its schema from the ORM metadata (not Alembic)."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.engine import URL
+
+    import app.models  # noqa: F401  (registers every model on Base.metadata)
+    from app.models.base import Base
+
+    _assert_scratch_name(name)
+    _create_scratch_database(name)
+    url = URL.create(
+        "postgresql", username=PG["user"], password=PG["password"], host=PG["host"], port=PG["port"], database=name,
+    )
+    orm_engine = create_engine(url)
+    try:
+        Base.metadata.create_all(bind=orm_engine)
+    finally:
+        orm_engine.dispose()
+
+
+def test_xn550_g2_orm_models_match_the_migration_exactly(scratch_at_head: str) -> None:
+    """ORM/migration parity for the two G2 tables: columns, constraints (names,
+    kinds, definitions) and indexes (names, uniqueness, definitions). Scoped to
+    the G2 tables because the known F-2 / F-3 drifts are elsewhere."""
+    _require_postgres()
+    orm_db = _new_scratch_name()
+    try:
+        _scratch_from_orm_models(orm_db)
+        from_orm = SchemaSnapshot(orm_db)
+    finally:
+        _drop_scratch_database(orm_db)
+    assert not _database_exists(orm_db)
+    from_migration = SchemaSnapshot(scratch_at_head)
+
+    def g2_view(snap: SchemaSnapshot):
+        return (
+            {k: v for k, v in snap.columns.items() if k[0] in _XN550_G2_TABLES},
+            {c for c in snap.constraints if c[1] in _XN550_G2_TABLES},
+            {i for i in snap.indexes if i[0] in _XN550_G2_TABLES},
+        )
+
+    orm_columns, orm_constraints, orm_indexes = g2_view(from_orm)
+    mig_columns, mig_constraints, mig_indexes = g2_view(from_migration)
+    assert orm_columns and orm_constraints and orm_indexes
+    assert orm_columns == mig_columns
+    assert orm_constraints == mig_constraints
+    assert orm_indexes == mig_indexes
+
+
 def test_fresh_install_dropped_legacy_columns(scratch_at_head: str) -> None:
     snap = SchemaSnapshot(scratch_at_head)
     present = _M1_REMOVED_COLUMNS & set(snap.columns)
@@ -715,22 +849,56 @@ def test_f2_absent_at_head(scratch_at_head: str) -> None:
     assert "patients_nomor_rm_key" not in snap.index_names()
 
 
+def test_xn550_g2_migration_downgrade_removes_only_its_objects(scratch_at_head: str) -> None:
+    """``8a3023944bd1``'s downgrade: one step down must remove exactly the two
+    G2 tables (with their constraints, indexes and sequences) and nothing else;
+    upgrading back to head must restore the same structure. Runs first among the
+    downgrade tests (each later one passes through this downgrade)."""
+    before = SchemaSnapshot(scratch_at_head)
+    assert _XN550_G2_TABLES <= before.tables
+
+    _alembic_or_fail(scratch_at_head, "downgrade", XN550_PHASE1)
+    mid = SchemaSnapshot(scratch_at_head)
+    assert mid.alembic_version == XN550_PHASE1
+    assert mid.tables == before.tables - _XN550_G2_TABLES
+    assert set(mid.columns) == {key for key in before.columns if key[0] not in _XN550_G2_TABLES}
+    assert mid.sequences == before.sequences - {
+        "instrument_result_sets_id_result_set_seq", "instrument_result_items_id_item_seq",
+    }
+    assert not (_XN550_G2_CONSTRAINTS & mid.constraint_names())
+    assert not (set(_XN550_G2_INDEX_DEFS) & mid.index_names())
+    # exactly the Phase 1 head numbers
+    assert (mid.count("p"), mid.count("u"), mid.count("f"), mid.count("c")) == (14, 7, 14, 2)
+    assert len(mid.not_null_columns()) == 70
+    assert len(mid.index_names()) == 32
+
+    _alembic_or_fail(scratch_at_head, "upgrade", "head")
+    after = SchemaSnapshot(scratch_at_head)
+    assert after.alembic_version == HEAD
+    assert after.tables == before.tables
+    assert after.columns == before.columns
+    assert set(after.constraints) == set(before.constraints)
+    assert set(after.indexes) == set(before.indexes)
+
+
 def test_xn550_phase1_migration_downgrade_removes_only_its_objects(scratch_at_head: str) -> None:
     """``5d2e8b7c41a9``'s downgrade is exercised here: one step down must
     remove ``instrument_sessions`` and exactly the 13 added
     ``instrument_messages`` columns, constraints and indexes — nothing else —
-    and upgrading back to head must restore the same structure. Runs first
-    among the downgrade tests (each later one passes through this downgrade)."""
+    and upgrading back to head must restore the same structure. Downgrading from
+    head to ``28aa370f5dbe`` passes through the G2 downgrade first, so the G2
+    tables are removed too."""
     before = SchemaSnapshot(scratch_at_head)
     assert "instrument_sessions" in before.tables
 
     _alembic_or_fail(scratch_at_head, "downgrade", M9_1B)
     mid = SchemaSnapshot(scratch_at_head)
     assert mid.alembic_version == M9_1B
-    assert mid.tables == before.tables - {"instrument_sessions"}
+    assert mid.tables == before.tables - {"instrument_sessions"} - _XN550_G2_TABLES
     removed_columns = {("instrument_messages", c) for c in _XN550_PHASE1_MESSAGE_COLUMNS}
     assert set(mid.columns) == {
-        key for key in before.columns if key[0] != "instrument_sessions"
+        key for key in before.columns
+        if key[0] != "instrument_sessions" and key[0] not in _XN550_G2_TABLES
     } - removed_columns
     assert not (_XN550_PHASE1_INDEXES & mid.index_names())
     assert (mid.count("p"), mid.count("u"), mid.count("f"), mid.count("c")) == (13, 6, 11, 0)
@@ -748,8 +916,9 @@ def test_xn550_phase1_migration_downgrade_removes_only_its_objects(scratch_at_he
 
 def test_audit_events_migration_downgrade_drops_audit_events_cleanly(scratch_at_head: str) -> None:
     """``28aa370f5dbe``'s downgrade is exercised here. Downgrading from head to
-    ``27e00bcff992`` necessarily passes through ``5d2e8b7c41a9``'s downgrade
-    first (``instrument_sessions``), then removes ``audit_events``; upgrading
+    ``27e00bcff992`` necessarily passes through the G2 and ``5d2e8b7c41a9``
+    downgrades first (the G2 tables, ``instrument_sessions``), then removes
+    ``audit_events``; upgrading
     back to head must be idempotent. Runs before the ``users`` downgrade test
     below, which downgrades further and removes ``users`` too."""
     before = SchemaSnapshot(scratch_at_head)
@@ -758,7 +927,7 @@ def test_audit_events_migration_downgrade_drops_audit_events_cleanly(scratch_at_
     _alembic_or_fail(scratch_at_head, "downgrade", "27e00bcff992")
     mid = SchemaSnapshot(scratch_at_head)
     assert "audit_events" not in mid.tables
-    assert mid.tables == before.tables - {"audit_events", "instrument_sessions"}
+    assert mid.tables == before.tables - {"audit_events", "instrument_sessions"} - _XN550_G2_TABLES
     assert mid.alembic_version == "27e00bcff992"
 
     _alembic_or_fail(scratch_at_head, "upgrade", "head")
@@ -785,7 +954,7 @@ def test_users_migration_downgrade_drops_users_cleanly(scratch_at_head: str) -> 
     mid = SchemaSnapshot(scratch_at_head)
     assert "users" not in mid.tables
     assert "audit_events" not in mid.tables
-    assert mid.tables == before.tables - {"users", "audit_events", "instrument_sessions"}
+    assert mid.tables == before.tables - {"users", "audit_events", "instrument_sessions"} - _XN550_G2_TABLES
     assert mid.alembic_version == "4aff9e134f16"
 
     # Restore head so the fixture is unchanged for any later test — none use

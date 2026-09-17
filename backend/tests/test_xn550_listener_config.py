@@ -2,7 +2,8 @@
 
 DB-free. Verifies that listener mode is bound exactly to the OD-XN-1 approval
 scope, stays disabled by default (G0), must name exactly the dedicated XN-550
-parser and policy (Phase 2), that protocol families are enforced at startup,
+parser and policy (Phase 2) and an explicit ingestion stage (G1 `raw_only` or G2
+`observations`, no default), that protocol families are enforced at startup,
 and that the HL7 client path is unchanged.
 """
 from __future__ import annotations
@@ -125,9 +126,22 @@ def test_listener_ack_policy_must_be_the_verified_baseline(policy):
     rejects(data, "ack_policy")
 
 
-@pytest.mark.parametrize("stage", [None, "observations", "clinical"])
-def test_listener_ingestion_stage_must_be_raw_only(stage):
+@pytest.mark.parametrize("stage", [None, "clinical", "RAW_ONLY", "Observations", "patient_result"])
+def test_listener_ingestion_stage_must_be_raw_only_or_observations(stage):
+    # Updated deliberately for G2 (contract §19.6.6): OD-XN-3 is approved, so
+    # `observations` is now accepted. There is still no default and no other value.
     rejects({**LISTENER, "ingestion_stage": stage}, "ingestion_stage")
+
+
+@pytest.mark.parametrize("stage", ["raw_only", "observations"])
+def test_listener_accepts_exactly_the_g1_and_g2_stages(stage):
+    assert InstrumentConfig.model_validate({**LISTENER, "ingestion_stage": stage}).ingestion_stage == stage
+
+
+def test_listener_stage_has_no_default():
+    data = dict(LISTENER)
+    data.pop("ingestion_stage")
+    rejects(data, "ingestion_stage")
 
 
 @pytest.mark.parametrize("key", [None, "bc5150_hl7", "astm_generic", "xn550_astm", "XN550_ASTM_E1394"])
@@ -219,6 +233,17 @@ def test_worker_factory_binds_listener_to_the_xn550_parser_and_classification_ho
     assert client._on_raw_committed.__qualname__ == "Xn550ClassificationStage.process"
     assert client._on_serve_start.func.__qualname__ == "Xn550ClassificationStage.process_pending"
     assert client._on_serve_start.args == (3,)
+    # G1 stays G1: the configured stage reaches the T2 stage unchanged.
+    assert client._on_raw_committed.__self__.ingestion_stage == "raw_only"
+
+
+def test_worker_factory_passes_the_observations_stage_only_when_configured():
+    runtime = RuntimeInstrument(
+        config=InstrumentConfig.model_validate({**LISTENER, "enabled": True, "ingestion_stage": "observations"}),
+        id_instrument=3,
+    )
+    client, _thread = run_integration.worker_factory(runtime)
+    assert client._on_raw_committed.__self__.ingestion_stage == "observations"
 
 
 def _unvalidated_runtime(**overrides) -> RuntimeInstrument:

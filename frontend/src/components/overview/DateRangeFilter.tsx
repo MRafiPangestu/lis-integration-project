@@ -6,7 +6,12 @@ export interface DateRangeFilterProps {
   dateFrom: string;
   dateTo: string;
   onChange: (dateFrom: string, dateTo: string) => void;
+  // Caption shown while the "All" preset is active. The default keeps the M8.4
+  // worklist wording unchanged; other views pass their own neutral caption.
+  allCaption?: string;
 }
+
+const DEFAULT_ALL_CAPTION = "All dates · every order for this instrument";
 
 const srOnly: CSSProperties = {
   position: "absolute",
@@ -51,7 +56,12 @@ const PRESETS: { key: PresetKey; label: string; range: () => [string, string] }[
   { key: "last7", label: "Last 7 days", range: last7DaysRange },
 ];
 
-export function DateRangeFilter({ dateFrom, dateTo, onChange }: DateRangeFilterProps) {
+export function DateRangeFilter({
+  dateFrom,
+  dateTo,
+  onChange,
+  allCaption = DEFAULT_ALL_CAPTION,
+}: DateRangeFilterProps) {
   const [draftFrom, setDraftFrom] = useState(dateFrom);
   const [draftTo, setDraftTo] = useState(dateTo);
 
@@ -111,7 +121,7 @@ export function DateRangeFilter({ dateFrom, dateTo, onChange }: DateRangeFilterP
 
       {activePreset === "all" ? (
         <span style={{ color: "var(--color-text-secondary)", fontSize: "0.75rem" }}>
-          All dates · every order for this instrument
+          {allCaption}
         </span>
       ) : (
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>

@@ -1,8 +1,10 @@
 import { apiClient } from "./client"
 import type {
   HistoryPatientResponse,
+  InstrumentResultSetDetail,
   InstrumentStatusResponse,
   LoginResponse,
+  PaginatedInstrumentResultSetResponse,
   PaginatedOrderOverviewResponse,
   PaginatedResultResponse,
   TestRunResponse,
@@ -93,4 +95,35 @@ export function getInstrumentOrders(
 
   const path = `/api/instruments/${encodeURIComponent(String(instrumentId))}/orders?${searchParams.toString()}`
   return apiClient.get<PaginatedOrderOverviewResponse>(path)
+}
+
+// XN-550 unlinked instrument results (G2, contract Appendix B). Read-only:
+// GET only. The only filters are the received-at window and the instrument —
+// there is deliberately no Sample No., patient, MRN or name search.
+export interface InstrumentResultsQueryParams {
+  received_from: string
+  received_to: string
+  id_instrument: number
+  page: number
+  page_size: number
+}
+
+export function getInstrumentResults(
+  params: InstrumentResultsQueryParams,
+): Promise<PaginatedInstrumentResultSetResponse> {
+  const searchParams = new URLSearchParams()
+  // Server-local naive timestamps: send the datetime-local strings verbatim.
+  searchParams.set("received_from", params.received_from)
+  searchParams.set("received_to", params.received_to)
+  searchParams.set("id_instrument", String(params.id_instrument))
+  searchParams.set("page", String(params.page))
+  searchParams.set("page_size", String(params.page_size))
+  return apiClient.get<PaginatedInstrumentResultSetResponse>(
+    `/api/instrument-results?${searchParams.toString()}`,
+  )
+}
+
+export function getInstrumentResult(idResultSet: number): Promise<InstrumentResultSetDetail> {
+  const path = `/api/instrument-results/${encodeURIComponent(String(idResultSet))}`
+  return apiClient.get<InstrumentResultSetDetail>(path)
 }

@@ -20,7 +20,9 @@ def get_instruments_status(db: Session = Depends(get_db)):
     
     results = []
     for inst in instruments:
-        valid_statuses = {"CONNECTED", "RECONNECTING", "DISCONNECTED"}
+        # LISTENING: a listener-mode instrument (XN-550) is bound and waiting,
+        # with no active session (contract §4.10). Additive value.
+        valid_statuses = {"CONNECTED", "RECONNECTING", "DISCONNECTED", "LISTENING"}
         
         if inst.connection_status is None:
             norm_status = "UNKNOWN"
