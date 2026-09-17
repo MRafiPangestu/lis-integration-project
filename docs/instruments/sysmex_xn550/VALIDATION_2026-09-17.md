@@ -5,6 +5,9 @@ Session record for the third XN-550 field session. The first was the survey of
 of 16 September 2026 ([`VALIDATION_2026-09-16.md`](VALIDATION_2026-09-16.md)); the
 standing engineering summary is [`README.md`](README.md).
 
+The same day also produced **Run03**, a corpus-expansion run after a break, with a fresh
+capture and listener (§15), and the cumulative corpus status that follows from it (§16).
+
 Evidence labels are those of `../../09_PHYSICAL_INSTRUMENT_VALIDATION.md` §2, as used
 in the 2026-09-16 record: **VERIFIED · CANDIDATE · UNVERIFIED · UNKNOWN**, plus the
 §6.2 confidence label **PARTIALLY VERIFIED** where a behaviour was observed but its
@@ -27,7 +30,8 @@ specimen mapping, deduplication key or schema change follows from anything below
 | Instrument | Sysmex XN-550 (`id_instrument = 3`), `10.0.0.11`, MAC `74:fe:48:a9:dc:34` |
 | LIS host | `10.0.0.10`, MAC `00:e0:4c:14:41:48`, interface `Ethernet` (same USB adapter as 2026-09-16) |
 | TCP port | **5001** |
-| Repository | `refactor/orm-architecture` at `c1c41e2`; **unchanged during the field session** |
+| Runs | **run01** 10:02–12:25 (first connection, GT-1, GT-2, GT-3A; RECONNECT-01/02 inside the same capture, listener output in `run02_reconnect/`) · **run03_corpus** 14:20–14:52 (fresh capture, listener and self-test after a break) |
+| Repository | `refactor/orm-architecture` at `c1c41e2` during run01/run02, `af2196b` during run03; **unchanged during every capture phase** |
 | Evidence root | `D:\SurveyLIS\evidence\2026-09-17\` — outside the repository |
 | PHI | **All raw payloads, the byte stream, the pcaps carrying payload and the ground-truth notes are PHI-bearing** and stay in the evidence root. No patient name, Sample No. value or other identifier appears in this document |
 | Listener | `D:\SurveyLIS\astm_raw_capture.py`, SHA-256 `4cb47218…aa710ed` (same tool as 2026-09-16); loopback self-test **passed** before use (1 044 bytes, all 256 values, SHA-256 identical) |
@@ -94,10 +98,17 @@ enter the repository.
 | `run02_reconnect/reconnect02_linkstate_log.jsonl` | 868 | `4cd7785f67fb9bd045cdef3310a887fee95a4fd56e968088389d9cf2673854a7` | Adapter link state / process health log | No |
 | `run02_reconnect/reconnect_manifest.json` | 2 724 | `df76c880cd4b1de3c1b79927a9bb46fcf261a07a0e89ae1b72539b08f10a0f1d` | Reconnect timeline and hashes | No |
 | `run02_reconnect/pre_disconnect_run01_hashes.txt` | 1 788 | `8901afffd2ce5c918c5a7c149803a105901b7e5ac5d9944ffa970b72380583a1` | Integrity baseline for run01; re-verified 16/16 after the tests | No |
+| `session_2026-09-17_xn550_run01.pcapng` | 26 500 | `6d1b45c2e255f384c76ffeef449aa96111f38bb2b562f58f317ae1dd1dd6f18a` | Continuous run01 capture, frozen at session close (148 frames; frames 146–148 are shutdown teardown) | **Yes** |
+| `run03_corpus/corpus03_conn01_rx.bin` | 22 547 | `240ee105a4d4e79642f50516221fc8772af157ca692de116961384e1059afa01` | **Authoritative Run03 byte stream** — all eight corpus messages; identical to the payload reassembled from the pcap | **Yes** |
+| `run03_corpus/corpus_d18_01.astm` … `corpus_d18_08.astm` | 1 860 – 3 126 | see §15.3 | The eight Run03 messages | **Yes** |
+| `run03_corpus/session_2026-09-17_xn550_run03_corpus.pcapng` | 34 200 | `813a5b7ecde8ac7bffaa7d2989484b62ca28f4d92ae1322e0c9ea8d55d58e5a1` | Run03 capture, frozen (119 frames; frames 117–119 are shutdown teardown) | **Yes** |
+| `run03_corpus/corpus_manifest.jsonl` | 18 860 | `d015b1b62b8a599b3da95c766cbf9a13b683aa4342a7412a889af0ae5f089ae5` | Per-message pre-registration, structure and wire records (includes two appended corrections and one repaired line) | No |
+| `run03_corpus/run03_corpus_summary.json` | 2 344 | `fe6c21f2db072907f29ba6f4ff674b6e4f7acf2fe81358cb8327520e97035c7c` | Run03 non-PHI summary | No |
+| `run03_corpus/run03_corpus_final_hashes.sha256` | 2 312 | `9a5816b46a0c4b308428e7d353ba26d5813dd44581fd749bcff20d6036469763` | Hash list of all 24 Run03 files; re-verified 24/24 | No |
 | `GROUND_TRUTH_operator_notes.md` | — | append-only; not pinned | Pre-registered declarations and outcomes | **Yes** |
 
-The continuous capture `session_2026-09-17_xn550_run01.pcapng` was still running when
-this record was written; the snapshots above are the frozen references.
+The per-message pcap snapshots of Run03 (`run03_corpus/post_corpus_d18_NN_snapshot.pcapng`)
+are listed with their hashes in `run03_corpus_final_hashes.sha256`.
 
 ---
 
@@ -127,6 +138,12 @@ this record was written; the snapshots above are the frozen references.
 | 11:41:38.82 | Ethernet link up (same cable, same ports) | RECONNECT-02 |
 | 11:46:49.990 | Instrument SYN from port 49707; new session established | Observation |
 | 11:56:57 | Post-reconnect window closed — 0 payload bytes in 10 min 7 s | Observation |
+| 12:25:45 – 12:25:54 | Session close: listener then capture stopped; one LIS-side `RST, ACK` on 49707 | Operator shutdown — not evidence |
+| 14:20:03 – 14:20:31 | **Run03** fresh setup: self-test passed, capture started (before cable reconnection), listener started | Pre-flight |
+| 14:23:04 | Ethernet link restored (cable reconnected by operator) | Operator setup |
+| 14:23:49.927 | Session `10.0.0.11:49737` established (one SYN) | Operator setup — not reconnect evidence |
+| 14:27:10 – 14:50:47 | **CORPUS-D18-01 … 08**: eight pre-registered single transmits, eight messages (§15) | **Controlled** |
+| 14:52:33 – 14:52:41 | Run03 close: listener then capture stopped; one LIS-side `RST, ACK` on 49737 | Operator shutdown — not evidence |
 
 ---
 
@@ -142,7 +159,8 @@ transmit (GT-1). No TCP keepalive frames were observed on the idle session.
 listener started (the user stated they were recorded beforehand); 0 bytes had arrived
 at that time. The declaration is therefore recorded as *declared before, relayed after*.
 
-**Interpretation — CANDIDATE, single observation.** In this configuration the XN-550
+**Interpretation — CANDIDATE** (single observation here; Run03 later added a second, shorter
+one, §15.1). In this configuration the XN-550
 did not transmit analyst-reported pending results automatically when a connection was
 established. **Not established:** whether "pending" on the analyzer corresponds to an
 instrument transmission queue; whether a longer wait, a new analysis or any other event
@@ -278,6 +296,8 @@ Across every captured message that carries image paths, the folder date equals t
 | 2026-09-17 GT-1 / GT-2 (Seq 68) | 2026-09-17 | `20260917` |
 | 2026-09-17 Seq 51 | **2026-09-16** | `20260917` |
 | 2026-09-17 Seq 58 | **2026-09-16** | `20260917` |
+| 2026-09-17 Run03 CORPUS-D18-01, -02 | 2026-09-17 | `20260917` |
+| 2026-09-17 Run03 CORPUS-D18-03 … -08 | **2026-09-16** | `20260917` |
 
 **Consequence for earlier documentation.** The 2026-09-16 record stated that the
 message format contains "no transmission-varying field whatsoever". **That is
@@ -290,9 +310,13 @@ incorrect** and has been corrected there (§8.1, §13, §15, §20 of that record
 
 ### 8.2 Interpretation
 
-The folder date behaves like a date of transmission or export rather than a date of
-analysis. **Its semantic meaning is UNKNOWN** — it could equally be an image-storage or
-export-folder date — and this record does not assign one.
+**Observed:** in every image-bearing message the folder date equals the day the message
+was captured, and in eight messages captured on 2026-09-17 it differs from the analysis
+date in `R`-13. It is therefore **not** the analysis date.
+
+**Its semantic meaning is UNKNOWN.** It must **not** be called a transmission date: the
+observations are equally consistent with an export, image-storage or other folder date,
+and no observation separates these. This record assigns no meaning.
 
 ### 8.3 Hypotheses — not facts
 
@@ -391,30 +415,35 @@ reconnect remains unknown.
 
 | Finding | Label | Evidence | Scope / limitation |
 |---|---|---|---|
-| One declared selected-result transmit → exactly one message | **VERIFIED** | GT-1, GT-3A-1, GT-3A-2 (and 2026-09-16 GT-2) | Selected-result action only |
+| One declared selected-result transmit → exactly one message | **VERIFIED** | GT-1, GT-3A-1, GT-3A-2, Run03 8/8 (and 2026-09-16 GT-2) | Selected-result action only |
 | Same-day manual retransmission is byte-identical | **VERIFIED** | GT-1 vs GT-2, 0 differing bytes | One controlled pair |
 | A day-granularity varying component exists (image-path folder date) | **VERIFIED** | Seq 58 vs 2026-09-16 A: 4 bytes | Semantic meaning **UNKNOWN** |
 | 2026-09-16 message A and Seq 58 are the same analysis | **Hypothesis** | Shared `R`-13, `O`-4, results | No declared action for A |
 | No dedicated message control id / sequence / transmission timestamp field | **VERIFIED** | `H`-3 empty; sequence absent in 68, 51, 58 | — |
 | `H`-5 sender (instrument model/serial) populated | **VERIFIED** | All 9 raw messages across three sessions carry one identical `H` record; populated fields `H`-1, `H`-2, `H`-5, `H`-13 | — |
-| `O`-3 empty; `O`-4 = on-screen Sample No. (component 3) | **VERIFIED** | GT-2 (2026-09-16), GT-1/GT-2, GT-3A | — |
-| No independent specimen identifier in the message | **VERIFIED** (observation) | GT-3A | These captures only |
+| `O`-3 empty; `O`-4 = on-screen Sample No. (component 3) | **VERIFIED** | GT-2 (2026-09-16), GT-1/GT-2, GT-3A, Run03 8/8 | — |
+| No independent specimen identifier in the message | **VERIFIED** (observation) | GT-3A; Run03 | These captures only |
+| `P`-5 population varies between messages | **VERIFIED** (observation) | Run03: populated in 2 of 8, empty in 6; empty or absent in every other 2026-09-16/17 message; populated in the September fixture | **Cause UNKNOWN**; content not characterised |
+| `R`-9 = `F`, `R`-11 = `lab`; `R`-6, `R`-8, `R`-12 empty | **VERIFIED** (observation) | Every raw message captured to date | These observations only |
 | Sample No. embedded in image-path `R`-4 values | **VERIFIED** | All image-bearing messages | PHI in raw evidence |
 | `R`-13 = analysis time | **VERIFIED** (corroborated) | Seq 68: ~6.6 h; Seq 51/58: previous day | — |
-| Pending results not auto-transmitted on connection | **CANDIDATE** | ~25 min, 0 bytes | Single observation |
+| Pending results not auto-transmitted on connection | **CANDIDATE** | run01: ~25 min, 0 bytes; Run03: ~3 min 20 s, 0 bytes, with results still pending | Two observations, the second short; not a rule |
+| Corpus message count ≥ 20 (T-CORPUS-01-03) | **MET** | 20 messages across three sessions (§16) | Count criterion only |
+| Corpus across categories (T-CORPUS-01-03) | **NOT MET** | Patient results only | QC / calibration / maintenance / startup **not observed** |
 | LIS-side RST → no reconnect within 5 min 16 s | **VERIFIED** (observation) | RECONNECT-01 | Not a claim that it cannot reconnect |
 | Reconnect after physical link interruption | **PARTIALLY VERIFIED** | RECONNECT-02 | Cause confounded with RECONNECT-01 |
 | Application payload after reconnect | **UNKNOWN** | 0 bytes in 10 min 7 s | Absence ≠ capability |
 
-### 11.1 Explicitly UNVERIFIED after this session
+### 11.1 Explicitly UNVERIFIED or NOT OBSERVED after this session (including Run03)
 
-- **Genuine same-specimen rerun** (not testable in this session; GT-3A is not a rerun).
-- **Instrument-initiated disconnect** behaviour.
-- **ACK-timeout retry** and **NAK** behaviour.
-- **Query / pull semantics** (LIS-initiated request for results).
-- **Queue flush / send-all** behaviour.
-- **QC, calibration, maintenance and startup message classes** — still zero captures.
-- Cross-day retransmission identity as a rule; meaning of the image-path folder date.
+- **Genuine same-specimen rerun** — UNVERIFIED (not testable; GT-3A and Run03 are not reruns).
+- **Instrument-initiated disconnect** behaviour — UNVERIFIED.
+- **ACK-timeout retry** and **NAK** behaviour — UNVERIFIED.
+- **Query / pull semantics** (LIS-initiated request for results) — UNVERIFIED.
+- **Queue flush / send-all** behaviour — UNVERIFIED.
+- **QC, calibration, maintenance and startup message classes** — **NOT OBSERVED** (zero captures).
+- Cross-day retransmission identity as a rule; meaning of the image-path folder date — UNKNOWN.
+- Cause of `P`-5 population differences — UNKNOWN.
 
 ---
 
@@ -424,11 +453,16 @@ reconnect remains unknown.
 second session confirming role, endpoint, framing and persistent-session behaviour. The
 inbound-on-other-ports gap from 2026-09-16 §5.2 is unchanged. **Not marked complete.**
 
-**T-CORPUS-01-03 — target ≥20 raw messages across categories.** This session adds
-**4 messages / 3 distinct payloads**, all patient-result work. Cumulatively:
-**12 messages** (1 + 7 + 4) plus one uncontrolled message of unknown class, **8 distinct
-patient-result payloads**, and **zero** QC, calibration, maintenance or startup captures.
-**Not satisfied.**
+**T-CORPUS-01-03 — target ≥20 raw messages across categories.** The test has two
+separate criteria, and they are recorded separately:
+
+| Criterion | Status | Basis |
+|---|---|---|
+| Message count ≥ 20 | **MET** | 20 messages: 1 (2026-09-15) + 7 (2026-09-16) + 4 (run01) + 8 (Run03) — §16 |
+| Across relevant categories | **NOT MET** | Patient results only; QC, calibration, maintenance and startup **not observed** |
+
+**T-CORPUS-01-03 is therefore NOT satisfied.** Before Run03 the count was 12 messages and
+8 distinct patient-result payloads.
 
 ---
 
@@ -458,3 +492,124 @@ patient-result payloads**, and **zero** QC, calibration, maintenance or startup 
 - No schema, migration, transport, configuration or frontend change; no database was
   contacted — `lis_marina_permata` was not touched.
 - No ACK withheld, no NAK sent, no instrument configuration changed, no send-all used.
+- Run03 followed the same boundary: raw messages, notes and pcaps stay in the evidence
+  root; the repository was not modified during capture.
+
+---
+
+## 15. Run03 — corpus expansion after the break
+
+### 15.1 Purpose and setup
+
+**Purpose:** expand the raw XN-550 corpus toward T-CORPUS-01-03's ≥20 messages, preferring
+genuine variation. **Not** a rerun, retransmission, reconnect, QC, calibration, ACK-timeout
+or NAK test. No synthetic, modified or replayed payload was used.
+
+| Item | Observed |
+|---|---|
+| Evidence directory | `run03_corpus/` — new; run01 and run02_reconnect untouched (re-verified by hash) |
+| Self-test | Passed 14:20:03 (1 044 B, all 256 values, SHA-256 identical) |
+| Capture | Started 14:20:11 with the cable still disconnected, so the link-up was captured |
+| Listener | Fresh instance on `0.0.0.0:5001`, 14:20:31, ACK-on-receive, never NAK |
+| Link / session | Cable reconnected by the operator; link 14:23:04; one SYN from `10.0.0.11:49737` at 14:23:49.927. **One TCP session carried all eight messages**; no reconnect during the run |
+| Adapter | Same USB-Ethernet adapter, stable for the whole run |
+| Before the first transmit | 0 payload bytes from session establishment (14:23:49.927) to CORPUS-D18-01 (14:27:10.546), ~3 min 20 s, while the analyst's earlier-listed pending results were still untransmitted |
+| Uncontrolled payload | None during the run |
+
+The session after cable reconnection is **operator setup, not reconnect evidence**. Recorded
+as facts only: link-up to SYN ≈ 46 s (versus 5 min 11 s in RECONNECT-02), and a source port
+30 higher than the previous session's. This does not change the §9.3 hypothesis status.
+
+### 15.2 Ground-truth procedure
+
+- **Operator ground truth:** before each transmit, the on-screen Sequence and Sample No.
+  were relayed and written to the external notes, with the action "transmit selected result
+  exactly once" and "normal transmission, not a rerun or retransmission test". Values are PHI
+  and stay in the evidence root.
+- One message was armed at a time; the next was armed only after the previous message had
+  been captured, hashed and recorded, and after a 45 s quiet window.
+- **Pre-arm check:** each proposal was compared against every earlier raw message. **Two
+  proposals were not armed:** Seq 61, whose Sequence and Sample No. match the 2026-09-16
+  controlled observation GT-2; and Seq 60, whose relayed Sample No. is contained in the `O`-4
+  of 2026-09-16 uncontrolled message C behind a 3-character prefix. **That Seq 60 corresponds
+  to message C is a hypothesis only.** Neither was transmitted.
+
+### 15.3 Messages captured — observed facts
+
+All eight are **controlled**: one declared action, exactly one message, `O`-4 component 3
+exactly equal to the declared Sample No., and not byte-identical to any earlier capture.
+
+| Corpus ID | Seq | Arrival | Bytes | SHA-256 | Records / `R` | Image paths | `R`-13 date | Reads / ACKs |
+|---|---|---|---|---|---|---|---|---|
+| CORPUS-D18-01 | 67 | 14:27:10.546 | 2 822 | `b122b9060b9fa0f36dd27639b303be3673867c9863e217831232668313c199ed` | 49 / 42 | 4 | 2026-09-17 | 1 / 1 |
+| CORPUS-D18-02 | 66 | 14:31:11.385 | 2 924 | `8de477467ed29aa6683fb1c7e9fba7d7bbf384cd7240fe2a1bb312dc746c8e33` | 50 / 44 | 4 | 2026-09-17 | 2 / 2 |
+| CORPUS-D18-03 | 65 | 14:33:37.009 | 2 922 | `c90a4444efcf8d80bf117a48a92188e3830825223e5142bf9cf314f3467cd790` | 50 / 44 | 4 | 2026-09-16 | 1 / 1 |
+| CORPUS-D18-04 | 64 | 14:36:42.702 | 3 126 | `2375e9e7d9b47cfa23f6fb6ebf428a15cca5fd2b1d23a1dec5b3f2388f868942` | 55 / 48 | 4 | 2026-09-16 | 2 / 2 |
+| CORPUS-D18-05 | 63 | 14:38:48.191 | 2 978 | `e51e6cf37b6de4c1ce5db81d230019d6842b50266f57cecbe0a3e9f3232c14a4` | 51 / 45 | 4 | 2026-09-16 | 2 / 2 |
+| CORPUS-D18-06 | 62 | 14:40:47.705 | 2 871 | `7d122297e9b831f33d7b6c5977fef6fb1f35f2d80dd4ba583987babeb011d97a` | 50 / 43 | 4 | 2026-09-16 | 2 / 2 |
+| CORPUS-D18-07 | 57 | 14:47:52.123 | 1 860 | `d114317c716eee49cc9bbdb07fce41d30fb3fd4fc93c4ce9fe41822b8d2ee755` | 33 / 27 | 3 | 2026-09-16 | 1 / 1 |
+| CORPUS-D18-08 | 56 | 14:50:46.846 | 3 044 | `eef24ff22ca33068f3f1f43492c203fdfe3d8ce95696d9ad5b71e370d4f07207` | 52 / 46 | 4 | 2026-09-16 | 2 / 2 |
+
+Every message has the order `H P C O C R… C L`, bare `CR` terminators, no `LF`, no E1381
+control bytes, and the payload reassembled from the pcap equals the listener's bytes.
+
+### 15.4 Field variation — observed facts
+
+| Aspect | Observed across the eight messages |
+|---|---|
+| Size | 1 860 – 3 126 B |
+| `R` count | 27 – 48 |
+| Panel | 7 with differential parameters (38 numeric `R`-4 values, 4 image paths); 1 without (22 numeric values, 3 image paths, no `SCAT_WDF`) |
+| Interpretive flag records | Vary by message; codes new to the corpus: `Monocytosis`, `Lymphocytosis`, `Anisocytosis`, `Microcytosis`, `Anemia`, `PLT_Abn_Distribution` |
+| `R`-7 abnormal flag values | `N`, `H`, `L`, `A`, `W`, blank |
+| `R`-4 shapes | Numeric values, image paths, and empty values on some flag records |
+| `P` | `P`-2 = `1`, `P`-9 = `U` in all; **`P`-5 populated in 2 of 8 (Seq 67, 66), empty in 6 — cause UNKNOWN** |
+| `O` | `O`-3 empty in all; `O`-4 component 3 padded with 12–16 leading spaces; `O`-4 component 4 = `M` in all |
+| `R`-9 / `R`-11 | `F` / `lab` in all |
+| `R`-6, `R`-8, `R`-12 | Empty in all |
+| `R`-13 | One value per message; 6 analysed 2026-09-16, 2 analysed 2026-09-17 |
+| Image-path folder date | `20260917` in all eight, including the six analysed on 2026-09-16 (§8.2: meaning UNKNOWN) |
+| Sequence number | Not present as any field in any of the eight |
+| `H` record | Identical to every earlier capture |
+| TCP | 2–3 segments per message; 1–2 listener reads; one ACK per read |
+
+### 15.5 Comparison with earlier captures
+
+- **Byte identity:** none of the eight equals any earlier raw message.
+- **Structure** (record order plus `R` test-code list) is shared with earlier captures for three
+  of them: CORPUS-D18-01 with 2026-09-16 A and D, 2026-09-17 Seq 58 and the September fixture;
+  CORPUS-D18-06 with 2026-09-17 Seq 51; CORPUS-D18-07 with 2026-09-16 message C. The other five
+  structures are new.
+
+### 15.6 Interpretation limits
+
+Run03 is corpus evidence only. It establishes **nothing** about genuine rerun behaviour,
+specimen identity (Sample No. and patient name are operator-entered text), deduplication keys,
+query/pull capability, queue flush or send-all, or ACK dependence. The sequence number is not
+treated as a specimen identifier. No production design follows.
+
+### 15.7 Close
+
+Listener terminated at 14:52:33.409 while idle, producing one LIS-side `RST, ACK` on 49737
+(frame 117); capture stopped by 14:52:41.266. The teardown frames are operator shutdown, not
+evidence. All 24 Run03 files were hashed (`run03_corpus_final_hashes.sha256`) and re-verified.
+
+---
+
+## 16. Cumulative XN-550 corpus status
+
+| Measure | Value | Composition |
+|---|---|---|
+| Raw patient-result messages | **20** | 1 (2026-09-15 survey) + 7 (2026-09-16: A ×4, B, C, D) + 4 (2026-09-17 run01: GT-1, GT-2, Seq 51, Seq 58) + 8 (Run03) |
+| — from pre-registered controlled actions | 13 | 2026-09-16 GT-2 (D); run01 4; Run03 8 |
+| — not pre-registered (survey / natural observations) | 7 | 2026-09-15 survey message; 2026-09-16 A ×4, B, C |
+| Distinct patient-result payloads | **16** | Repeated deliveries (A ×4) and the same-day retransmission (GT-2 = GT-1) counted once |
+| Distinct structures | **10** | Record order plus `R` test-code list |
+| Outside the corpus | 1 | The uncontrolled 1 102-byte message of 2026-09-16, class UNKNOWN |
+| QC / calibration / maintenance / startup | **0** | **Not observed** |
+
+Seq 58 and 2026-09-16 message A differ by only 4 bytes (§8) and are counted as distinct
+payloads by bytes; whether they are the same analysis remains a hypothesis.
+
+**T-CORPUS-01-03:** message-count criterion **MET**; category criterion **NOT MET**;
+test **not satisfied** (§12).

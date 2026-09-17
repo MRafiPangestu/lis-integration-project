@@ -14,7 +14,7 @@ On **15 September 2026** a Sysmex XN-550 was physically connected to a survey PC
 
 A **second session on 16 September 2026** performed structured physical validation with full packet capture and a byte-exact listener — see [`VALIDATION_2026-09-16.md`](VALIDATION_2026-09-16.md). It captured 7 messages (4 distinct payloads), settled the transport-role and framing questions for this configuration, and confirmed the `O`-4 identifier mapping against ground truth declared *before* transmission. **It closed no milestone and no release gate:** M9.2 and M9.3b are BC-5150-scoped and untouched, and `T-CORPUS-01-03` remains unsatisfied.
 
-A **third session on 17 September 2026** — see [`VALIDATION_2026-09-17.md`](VALIDATION_2026-09-17.md) — used ground truth declared before every action. It showed that a same-day manual retransmission is byte-identical, recorded a same-patient / different-sequence observation (**not** a rerun), found a cross-day 4-byte difference in an image-path folder date, and observed a reconnect after a physical link interruption (**PARTIALLY VERIFIED**, cause confounded). It also corrected two statements in the 16 September record. Again, no milestone or gate was closed.
+A **third session on 17 September 2026** — see [`VALIDATION_2026-09-17.md`](VALIDATION_2026-09-17.md) — used ground truth declared before every action. It showed that a same-day manual retransmission is byte-identical, recorded a same-patient / different-sequence observation (**not** a rerun), found a cross-day 4-byte difference in an image-path folder date, and observed a reconnect after a physical link interruption (**PARTIALLY VERIFIED**, cause confounded). It also corrected two statements in the 16 September record. After a break the same day, **Run03** added 8 controlled corpus messages, bringing the corpus to **20 messages / 16 distinct payloads / 10 structures** — the `T-CORPUS-01-03` message count is **met**, but the category criterion is **not** (patient results only). Again, no milestone or gate was closed.
 
 This establishes the XN-550 as the **second instrument in this project with any field evidence at all** (after the Mindray BC-5150), and it answers the first question `docs/09` §11.3 says must be answered before parser work: *which side initiates the connection?*
 
@@ -89,7 +89,10 @@ source for the rows that cite it.
 | XN-550 → LIS transmission | **VERIFIED** | Instrument-initiated; session 2 recorded the dial pattern (5 SYNs ~508 ms, ~60 s cycle) |
 | ASTM message reception | **VERIFIED** | Complete messages, `L|1|N` terminator |
 | `H`/`P`/`O`/`R`/`L` structure observed | **VERIFIED** | `C` records also present |
-| Raw patient-result capture | **VERIFIED** | Session 1: 1 message. Session 2: 7 messages, 4 distinct payloads. Session 3: 4 messages, 3 distinct payloads |
+| Raw patient-result capture | **VERIFIED** | Session 1: 1 message. Session 2: 7 messages, 4 distinct payloads. Session 3: 4 messages, 3 distinct payloads (run01) + 8 messages, 8 distinct payloads (Run03). **Cumulative: 20 messages, 16 distinct payloads, 10 distinct structures** |
+| Corpus size ≥ 20 (`T-CORPUS-01-03`) | **MET** | 20 messages; 13 from pre-registered controlled actions, 7 not pre-registered (survey / natural observations). The uncontrolled 1 102-byte message is excluded |
+| Corpus across categories (`T-CORPUS-01-03`) | **NOT MET** | Patient results only — QC, calibration, maintenance and startup **not observed** |
+| Structural range observed | **VERIFIED** (observation) | Run03: 1 860–3 126 bytes, 27–48 `R` records; with and without differential parameters; `R`-7 flags `N`/`H`/`L`/`A`/`W`/blank; `R`-9 = `F`, `R`-11 = `lab`, `R`-6/`R`-8/`R`-12 empty in every capture |
 | Experimental ACK handling | **VERIFIED** | ACK-only, permissive, **per socket read** — not per ASTM message |
 | ASTM 1381-95 framing in observed payloads | **VERIFIED — absent** *(this configuration only)* | Session 2, pcap + byte census across 7 messages. **Not a claim that the XN-550 never uses E1381** — other output settings untested |
 | Instrument's native E1381 handshake semantics | **NOT FIELD-VERIFIED** | Our ACK is application-level only |
@@ -99,27 +102,27 @@ source for the rows that cite it.
 | Multiple messages per connection | **VERIFIED** | Session 2: 7 messages over one 41-minute session, no reconnect. Session 3: 4 messages over one session |
 | Persistent idle session, no heartbeat | **VERIFIED** | Sessions 2 and 3: connection held with 0 bytes exchanged; no TCP keepalive frames captured |
 | Transmission/message control identifier field | **VERIFIED — none exists** | `H`-3 (control id) empty in every message; `H`-5 (sender / instrument information) **is** populated. *Corrected in session 3 — previously stated as "`H`-3 … `H`-12 empty"* |
-| One selected-result transmit → one message | **VERIFIED** | Session 2 GT-2; session 3 GT-1, Seq 51, Seq 58 |
+| One selected-result transmit → one message | **VERIFIED** | Session 2 GT-2; session 3 GT-1, Seq 51, Seq 58, Run03 8/8 |
 | Same-day manual retransmission | **VERIFIED — byte-identical** | Session 3 GT-1 → GT-2: 0 differing bytes. One controlled pair |
-| Transmission-/day-varying content | **VERIFIED — exists at day granularity** | Session 3: Seq 58 vs session-2 message A differ in 4 bytes, the image-path folder date. **Meaning UNKNOWN**; whether both are the same analysis is a **hypothesis** |
-| On-screen Sample No. → `O`-4 component 3 | **VERIFIED** | Session 2 GT-2; session 3 GT-1/GT-2, Seq 51, Seq 58 — each against ground truth declared **before** transmission |
+| Day-varying content (image-path folder date) | **VERIFIED — exists at day granularity** | Session 3: Seq 58 vs session-2 message A differ in 4 bytes, the image-path folder date. The folder date equals the capture day even where `R`-13 shows an earlier analysis date. **Meaning UNKNOWN — not established as a transmission date**; whether Seq 58 and message A are the same analysis is a **hypothesis** |
+| On-screen Sample No. → `O`-4 component 3 | **VERIFIED** | Session 2 GT-2; session 3 GT-1/GT-2, Seq 51, Seq 58, Run03 8/8 — each against ground truth declared **before** transmission |
 | Independent specimen identifier in the message | **VERIFIED — none observed** | Session 3 GT-3A: `O`-3 empty, no patient id, no control id, sequence not sent; `O`-4 is the only identity-like field that differed |
 | Lab practice: Sample No. holds a personal name | **CANDIDATE** | One lab, operator-entered free text. See §5.1 and the S1 hazard |
 | `R`-13 = analysis time, not transmission time | **VERIFIED** | Session 2 GT-2: ~16½ min. Session 3: ~6.6 h (Seq 68); previous-day analyses (Seq 51, 58) |
-| On-screen sequence number transmitted? | **VERIFIED — it is not** | Session 2 GT-2; session 3 Seq 68, 51, 58: appears in no field |
-| Exact semantics of the patient identifier field (`P`-5) | **UNKNOWN / NOT CONFIRMED** | Populated in session 1, empty in sessions 2 and 3. See §5.1 |
+| On-screen sequence number transmitted? | **VERIFIED — it is not** | Session 2 GT-2; session 3 Seq 68, 51, 58 and all 8 Run03 messages: appears in no field |
+| Exact semantics of the patient identifier field (`P`-5) | **UNKNOWN / NOT CONFIRMED** | Populated in session 1; empty in session 2; in session 3 empty in run01 and populated in 2 of 8 Run03 messages. **Cause of the variation UNKNOWN.** See §5.1 |
 | Exact semantics of `O`-3 | **UNKNOWN / NOT CONFIRMED** | Empty in every message observed |
 | Genuine rerun behaviour | **NOT FIELD-VERIFIED** | Never performed. Session 3 GT-3A was a same-patient / different-sequence observation, **not** a rerun |
-| Pending results sent automatically on connection | **CANDIDATE — not observed** | Session 3: 0 bytes for ~25 min despite analyst-reported pending results; single observation |
+| Pending results sent automatically on connection | **CANDIDATE — not observed** | Session 3: 0 bytes for ~25 min (run01) and ~3 min 20 s (Run03) despite analyst-reported pending results; not a rule |
 | Historical host query (LIS → instrument request) | **NOT FIELD-VERIFIED** | Never attempted |
 | Historical / cross-day resend behaviour | **NOT FIELD-VERIFIED** | Only a same-day manual retransmission was controlled (row above) |
 | Send-all / queue-flush behaviour | **NOT FIELD-VERIFIED** | Never used |
 | ACK-timeout retransmission behaviour | **NOT FIELD-VERIFIED** | ACK never withheld |
 | Reconnect after disconnect | **PARTIALLY VERIFIED** | Session 3: LIS-side RST → no reconnect in 5 min 16 s; after a physical link interruption the instrument opened a new session (1 SYN, new source port), no payload. **Cause confounded.** Session-2 disconnects were cable/adapter events, not instrument behaviour |
 | Instrument-initiated disconnect; idle-socket timeout; connection limits | **NOT FIELD-VERIFIED** | Never observed |
-| QC message classification | **NOT FIELD-VERIFIED** | Zero QC captures |
-| Calibration classification | **NOT FIELD-VERIFIED** | Zero captures |
-| Maintenance / startup classification | **NOT FIELD-VERIFIED** | Zero captures |
+| QC message classification | **NOT FIELD-VERIFIED** | Zero QC captures — **not observed** in any session, including Run03 |
+| Calibration classification | **NOT FIELD-VERIFIED** | Zero captures — not observed |
+| Maintenance / startup classification | **NOT FIELD-VERIFIED** | Zero captures — not observed |
 | Result-value fidelity end to end | **NOT FIELD-VERIFIED** | Never ingested by this system |
 | Legacy fixed-width format layout | **UNKNOWN** | Only a truncated sample exists |
 
@@ -167,7 +170,7 @@ In the order they should be answered. Items 1 and 2 are the ones that can invali
 5. **Retransmission and resend** — **partly answered:** a same-day manual retransmission is byte-identical (session 3), and a cross-day comparison shows a 4-byte image-path folder-date difference. **Still open:** genuine rerun vs retransmission, cross-day resend as a rule, reconnect resend, ACK-timeout resend. **Feeds M9.2; does not resolve it.**
 6. **QC / calibration / maintenance / startup message shapes** — currently zero captures. **Feeds M9.3b; does not resolve it.**
 7. **Historical host query** — whether the instrument supports a LIS-initiated request for prior results, and in what dialect. Never attempted.
-8. **Message corpus** — `docs/09` T-CORPUS-01-03 requires **≥20 messages across categories**. **12 exist** (1 + 7 + 4) plus one uncontrolled message of unknown class — 8 distinct patient-result payloads, zero QC / calibration / maintenance / startup.
+8. **Message corpus** — `docs/09` T-CORPUS-01-03 requires **≥20 messages across categories**. **Count criterion met:** 20 messages (1 + 7 + 4 + 8), 16 distinct patient-result payloads, 10 distinct structures, plus one uncontrolled message of unknown class. **Category criterion not met:** zero QC / calibration / maintenance / startup captures — this is now the open part of the item (see item 6).
 9. **Connection behaviour** — multiple messages per connection is **VERIFIED**; reconnect after a physical link interruption is **PARTIALLY VERIFIED** (cause confounded). **Still open:** instrument-initiated disconnect, idle-socket timeout, connection limits, ordering guarantees.
 
 > **None of the following is solved by this survey, and no document in this directory may be cited as solving it:** host query, historical reconciliation, retransmission semantics, deduplication (M9.2), QC or calibration filtering (M9.3b), specimen identity, or Gateway/reconciliation. Vendor or report *claims* that the instrument supports a capability are **CLAIMED**, never VERIFIED.

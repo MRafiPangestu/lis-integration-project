@@ -585,9 +585,17 @@ Extend the Integration Service to handle concurrent connections from all 9 instr
 
 **Current status — M8.3: COMPLETE**, evidence E1 (`backend/tests/test_parser_registry.py`). **ASTM support is DEFERRED** by this milestone's own decision — a deliberate project choice pending field-verified evidence, not a failure and not an external block. A second protocol family is introduced only when a real corpus exists for it (`09_PHYSICAL_INSTRUMENT_VALIDATION.md` §11.4, §16).
 
-> **First ASTM field evidence now exists — the deferral condition is partially, not fully, met.** A Sysmex XN-550 (`id_instrument = 3`) was physically connected on **15 September 2026** and one complete ASTM E1394-97 patient-result message was captured: `docs/instruments/sysmex_xn550/`, with the redacted raw message at `backend/tests/fixtures/instruments/sysmex_xn550/patient_result_001.astm`.
+> **Historical note (15 September 2026) — superseded in part; see the update below.** **First ASTM field evidence now exists — the deferral condition is partially, not fully, met.** A Sysmex XN-550 (`id_instrument = 3`) was physically connected on **15 September 2026** and one complete ASTM E1394-97 patient-result message was captured: `docs/instruments/sysmex_xn550/`, with the redacted raw message at `backend/tests/fixtures/instruments/sysmex_xn550/patient_result_001.astm`.
 >
 > **ASTM support remains DEFERRED and M8.3's scope is unchanged.** One message is not the corpus this milestone's condition asks for — `09_PHYSICAL_INSTRUMENT_VALIDATION.md` T-CORPUS-01-03 requires **≥20 messages across categories**, and two questions that §11.3 says must be answered *before* parser work are still open: the XN-550 was observed operating as a **TCP client expecting the LIS to listen** (the LIS is client-only, `core/config.py`), and whether ASTM 1381-95 low-level framing is present on the wire is **unresolved** (no packet capture was taken). No parser, no configuration entry, no transport change and no schema change is authorised by this evidence.
+>
+> **Update (17 September 2026) — status after two further field sessions** (`docs/instruments/sysmex_xn550/VALIDATION_2026-09-16.md`, `VALIDATION_2026-09-17.md`). The historical note above is kept as written; where it conflicts with this update, this update is current:
+> - **"One message"** — superseded. The raw corpus is now **20 patient-result messages** (16 distinct payloads, 10 distinct structures). `T-CORPUS-01-03`'s **count criterion is met**; its **category criterion is not** (zero QC, calibration, maintenance or startup captures), so the test is **not satisfied**.
+> - **"Framing unresolved"** — superseded for the tested configuration. Packet captures show **no E1381 framing bytes in the payload** under the configured output; other output settings are untested.
+> - **Transport role** — confirmed: the XN-550 **dials the LIS**, and does not accept inbound connections on port 5001; stop condition **S7 is met**. Listener mode remains an open architecture decision.
+> - Still open: genuine rerun, instrument-initiated disconnect, ACK-timeout retry / NAK, query/pull, send-all, and all non-patient message categories. Reconnect behaviour is only **partially verified**.
+>
+> **ASTM support remains DEFERRED and M8.3's scope is unchanged.** No parser, configuration entry, transport change or schema change is authorised by this evidence.
 
 - [x] **M8.4** — Instrument Order Overview API
   - [x] Row grain frozen as **one Order** (not Patient/Visit/TestRun); an order is included when the requested instrument has ≥ 1 TestRun for it (EXISTS semi-join, no fan-out); patient identity is displayed but the view stays order-grained
@@ -935,7 +943,7 @@ Basis: `06_QA_TEST_PLAN.md` §21 sign-off criteria.
 
 | ID | Gate | Requirement basis | Engineering work | External blocker | External owner |
 |---|---|---|---|---|---|
-| **RG-1** | Second instrument / multi-instrument isolation | `02_PRD.md` AC-01, AC-13; `06_QA_TEST_PLAN.md` §21.6 | **No new milestone.** Configuration entry, a parser for that instrument, and a field session | Physical access to a second instrument; `09_PHYSICAL_INSTRUMENT_VALIDATION.md` question Q5 (which instruments are in routine clinical use). **Partially advanced (15 Sep 2026):** a Sysmex XN-550 was physically connected and one ASTM message captured (`docs/instruments/sysmex_xn550/`). **The gate is not cleared** — no parser, no configuration entry, no concurrent-isolation session, and the observed client/server role is inverted relative to the current client-only transport | Lab management |
+| **RG-1** | Second instrument / multi-instrument isolation | `02_PRD.md` AC-01, AC-13; `06_QA_TEST_PLAN.md` §21.6 | **No new milestone.** Configuration entry, a parser for that instrument, and a field session | Physical access to a second instrument; `09_PHYSICAL_INSTRUMENT_VALIDATION.md` question Q5 (which instruments are in routine clinical use). **Partially advanced (15 Sep 2026):** a Sysmex XN-550 was physically connected and one ASTM message captured (`docs/instruments/sysmex_xn550/`). *Update (17 Sep 2026): two further field sessions brought the XN-550 corpus to 20 patient-result messages and confirmed the instrument dials the LIS (S7 met); still no parser, configuration entry or concurrent-isolation session.* **The gate is not cleared** — no parser, no configuration entry, no concurrent-isolation session, and the observed client/server role is inverted relative to the current client-only transport | Lab management |
 | **RG-2** | SIMRS end-to-end delivery | `02_PRD.md` AC-11, FR-16; `06_QA_TEST_PLAN.md` §21.7 | **None — the code already exists** (M6) | SIMRS Integration Specification: endpoint, payload contract and authentication are deferred to it by `01_PROJECT_BRIEF.md` §7 and `02_PRD.md` FR-17 | Project owner / hospital IT (SIMRS vendor) |
 | **RG-3** | `PATIENT_RESULT` enablement for BC-5150 | `02_PRD.md` FR-04; `09_PHYSICAL_INSTRUMENT_VALIDATION.md` §9.5, §9.6 | M9.2 **and** M9.3b **and** the specimen-identity decision | Physical evidence: T-BC-K ×2, T-BC-B, T-ID-02; lab-management questions Q1 and Q4 | Project owner, on field evidence |
 
@@ -984,7 +992,7 @@ Status vocabulary and the completion rule are defined at the top of this documen
 | M8.1 — Instrument Config & Supervisor | ✅ COMPLETE | Instruments 2–9 rollout → RG-1 (external) |
 | M8.2 — Ingestion Hardening & Classification | ✅ COMPLETE | Specimen identity DEFERRED → RG-3 |
 | M8.2b — BC-5150 Background Rule | ✅ COMPLETE (field-verified) | QC extension BLOCKED → M9.3b |
-| M8.3 — Parser Registry | ✅ COMPLETE | ASTM **still DEFERRED**; first ASTM field evidence captured 15 Sep 2026 (XN-550, 1 message, not a corpus) — `docs/instruments/sysmex_xn550/` |
+| M8.3 — Parser Registry | ✅ COMPLETE | ASTM **still DEFERRED**; first ASTM field evidence captured 15 Sep 2026 (XN-550, 1 message); by 17 Sep 2026 20 patient-result messages — count criterion met, category criterion **not** met — `docs/instruments/sysmex_xn550/` |
 | M8.4 — Instrument Order Overview API | ✅ COMPLETE | D4 `total_runs` consciously not implemented |
 | M8.5 — Enterprise Dashboard Integration | ✅ COMPLETE | Tier-2 tests deferred by permitted fallback → M9.4 |
 | M8.6 — Frontend Visual Polish | ✅ COMPLETE | F3 behavioural note; O8 unconfirmed (OD-3) |

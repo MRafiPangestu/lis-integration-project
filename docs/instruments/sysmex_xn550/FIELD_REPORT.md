@@ -22,9 +22,11 @@
 > [`VALIDATION_2026-09-16.md`](VALIDATION_2026-09-16.md), which supersedes this
 > document wherever the two speak to the same question. A **third session** on
 > **17 September 2026** ([`VALIDATION_2026-09-17.md`](VALIDATION_2026-09-17.md)) added
-> controlled retransmission, identifier and reconnect evidence, and corrected two
-> statements in the 16 September record. Nothing below has been rewritten to match
-> either.
+> controlled retransmission, identifier and reconnect evidence, corrected two
+> statements in the 16 September record, and — in a corpus-expansion run (Run03) — brought
+> the raw corpus to 20 messages, all patient results. The single message this report
+> describes is therefore no longer the whole corpus. Nothing below has been rewritten to
+> match either.
 
 ### 0.1 ⚠ This is a historical field-survey report, not an architecture decision
 
