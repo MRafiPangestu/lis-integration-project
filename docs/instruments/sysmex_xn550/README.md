@@ -54,7 +54,12 @@ This establishes the XN-550 as the **second instrument in this project with any 
 
 > **The connection role is the headline finding.** `backend/app/core/config.py` sets `SUPPORTED_INSTRUMENT_MODES = {"client"}` — the LIS dials out and cannot listen. `docs/09` §11.3 states that an instrument which expects the LIS to listen *"cannot be connected at all without implementing listener mode."*
 >
-> **However:** this survey shows the XN-550 *operating* as a client. It does **not** show that the XN-550 *cannot* accept an inbound connection — that was never successfully tested. Do not conclude that listener mode is mandatory until that question is answered (§7, item 1).
+> **Settled for the tested configuration (sessions 2 and 3).** The 15 September survey only showed the XN-550 *operating* as a client; the reverse direction was not tested then. It has since been tested:
+>
+> - **Evidence:** in the tested configuration (ASTM output, TCP port 5001), the XN-550 dials the LIS. When the LIS dialled the instrument's port 5001, its SYNs were **silently dropped** — neither SYN-ACK nor RST ([`VALIDATION_2026-09-16.md`](VALIDATION_2026-09-16.md) §5.1–§5.3; [`VALIDATION_2026-09-17.md`](VALIDATION_2026-09-17.md) §20.1). **Listener mode is therefore a prerequisite for integrating this tested configuration**; stop condition S7 is met.
+> - **Scope:** this is not a claim about every XN-550 port or output configuration. Whether the instrument accepts inbound connections on **any other port is UNKNOWN**; no port scan was performed or is authorised (§7, item 1).
+> - **Evidence vs. approval:** the field evidence establishes the prerequisite. The architecture decision to build listener mode is a separate approval, recorded as **OD-XN-1 (approved)** in [`M9.2_IMPLEMENTATION_CONTRACT.md`](M9.2_IMPLEMENTATION_CONTRACT.md) §0.3.
+> - **Implementation:** listener mode is **not implemented** yet (§6).
 
 ---
 
@@ -154,7 +159,7 @@ This is the XN-550 equivalent of the identity question `docs/09` §10 raises for
 |---|---|
 | Parser | **None.** `backend/app/integration/parsers/registry.py` contains exactly one entry, `bc5150_hl7`. Resolution is exact-match with no fallback; an unknown `parser_key` raises `ParserNotRegisteredError` at startup |
 | ASTM support | **None anywhere in production code.** The ingestion path is HL7 v2.3.1 over MLLP |
-| Transport | **Client-only.** `SUPPORTED_INSTRUMENT_MODES = {"client"}`; listener mode is explicitly deferred in `backend/app/core/config.py` |
+| Transport | **Client-only.** `SUPPORTED_INSTRUMENT_MODES = {"client"}`; listener mode is explicitly deferred in `backend/app/core/config.py`. That remains the code state. Listener mode for the tested XN-550 configuration is now architecture-approved (contract OD-XN-1) but **not implemented** |
 | Configuration | **No XN-550 entry** in `instruments.example.json`; enabling one today would fail loudly at startup |
 | Classification | Policies are BC-5150-specific; no XN-550 policy exists |
 | Database | **Unchanged.** No migration, no schema change, no new model was introduced by this import |
@@ -169,7 +174,7 @@ This is the XN-550 equivalent of the identity question `docs/09` §10 raises for
 
 In the order they should be answered. Items 1 and 2 are the ones that can invalidate an integration approach, so they come before any parser work (`docs/09` §11.3).
 
-1. ~~**Can the XN-550 accept an inbound TCP connection?**~~ **Answered for port 5001 by session 2** — it does not; the LIS's SYNs are silently dropped, so **stop condition S7 is met** and listener mode would be a prerequisite for this configuration. **Still open:** whether it accepts inbound on any *other* port. No port scan was performed.
+1. ~~**Can the XN-550 accept an inbound TCP connection?**~~ **Answered for port 5001 by session 2** — it does not; the LIS's SYNs are silently dropped, so **stop condition S7 is met** and listener mode is a prerequisite for integrating this configuration. The architecture decision is approved as OD-XN-1 in [`M9.2_IMPLEMENTATION_CONTRACT.md`](M9.2_IMPLEMENTATION_CONTRACT.md) §0.3, bounded to this tested configuration. **Still open:** whether it accepts inbound on any *other* port. No port scan was performed or is authorised.
 2. ~~**Is ASTM 1381-95 framing present on the wire?**~~ **Answered for this configuration by session 2** — no `STX`/`ETX`/`ENQ`/`EOT`/`ACK`/`NAK`/checksum bytes appear in any observed payload; records are `CR`-terminated. **Still open:** behaviour under other instrument output settings, and the instrument's native E1381 handshake semantics, which our application-level ACK cannot establish.
 3. **Identity semantics** — **partly answered.** `O`-4 component 3 is **VERIFIED** as the on-screen *Sample No.* (session 2 GT-2, pre-registered). **Still open:** what `P`-5 holds and why its population differs between sessions; what `O`-3 is intended for; and whether any specimen/tube barcode is transmitted at all. Requires a corpus with known ground truth.
 4. **ACK dependence** — what does the instrument do when an ACK is delayed, withheld, or replaced by a NAK? *(Same class of question as BC-5150 T-BC-T, which is gated on lab-management approval to withhold an ACK on a live instrument.)*
