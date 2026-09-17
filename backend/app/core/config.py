@@ -1,16 +1,40 @@
+import ipaddress
 import json
 from pathlib import Path
-from typing import List, Optional
+from typing import Iterable, List, Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 
-# Only client mode is supported in M8. Listener/server mode is deferred until
-# field verification proves it is required.
-SUPPORTED_INSTRUMENT_MODES = {"client"}
+# "client": the LIS dials the instrument (M8; HL7 over MLLP).
+# "listener": the instrument dials the LIS. Field verification proved this is
+# required for the tested Sysmex XN-550 configuration and the project owner
+# approved it (docs/instruments/sysmex_xn550/M9.2_IMPLEMENTATION_CONTRACT.md,
+# OD-XN-1). Listener mode is authorised ONLY for LISTENER_APPROVED_SCOPES below.
+SUPPORTED_INSTRUMENT_MODES = {"client", "listener"}
+
+# OD-XN-1 approval scope, encoded exactly: (instrument_name, port) pairs for
+# which listener mode is approved. The approval covers the tested XN-550 ASTM
+# configuration on TCP port 5001 only — not other ports (UNKNOWN; no port scan
+# authorised) and not any other instrument. Extending this set is an
+# architecture decision backed by that instrument's own transport evidence,
+# never a configuration change.
+LISTENER_APPROVED_SCOPES = frozenset({("Sysmex XN-550", 5001)})
+
+# Listener ACK policies implemented in this phase (contract §4.5). Only the
+# field-verified baseline exists; `ack_per_message_after_raw_commit` is NOT
+# FIELD-VERIFIED and stays unavailable until OD-XN-4.
+LISTENER_ACK_POLICIES = frozenset({"ack_per_read_on_receive"})
+
+# Listener ingestion stages implemented in this phase (contract §19.3). Only
+# G1 `raw_only`; `observations` (G2) is not implemented and OD-XN-3 is open.
+LISTENER_INGESTION_STAGES = frozenset({"raw_only"})
+
+# Fields that only have meaning for a listener-mode instrument.
+_LISTENER_ONLY_FIELDS = ("allowed_peers", "ack_policy", "ingestion_stage")
 
 # --- JWT secret strength (M9.1a review finding M-1) --------------------------
 # Minimum accepted JWT_SECRET_KEY length. 32 characters is the smallest value
@@ -39,16 +63,30 @@ class InstrumentConfig(BaseModel):
 
     key: str
     instrument_name: str
+    # client mode: the instrument's address. listener mode: the LIS bind address.
     host: str
     port: int
     mode: str = "client"
-    parser_key: str
-    identity_prefix: str
+    # Required (and non-null) in client mode. In listener mode it may be
+    # omitted and must be null: no ASTM parser is registered in XN-550 Phase 1
+    # (G1 raw capture), so there is nothing to resolve (contract §19.4).
+    parser_key: Optional[str]
+    # Required (and non-null) in client mode, where it builds `no_registrasi`.
+    # Optional in listener mode, and never used by any listener code path
+    # (contract §4.2, §12.3).
+    identity_prefix: Optional[str]
     enabled: bool = False
     # M8.2: name of the message-classification policy for this instrument.
     # Omitted -> the strict default (UNCLASSIFIED). Resolved in
     # app.integration.classification; unknown names fall back to strict.
+    # Must be omitted in listener mode (no XN-550 policy exists in Phase 1).
     classification_policy: Optional[str] = None
+    # Listener mode only (contract §4.2). Exact peer IP allowlist.
+    allowed_peers: Optional[List[str]] = None
+    # Listener mode only (contract §4.5).
+    ack_policy: Optional[str] = None
+    # Listener mode only (contract §19.3).
+    ingestion_stage: Optional[str] = None
 
     @field_validator("mode")
     @classmethod
@@ -56,10 +94,87 @@ class InstrumentConfig(BaseModel):
         if value not in SUPPORTED_INSTRUMENT_MODES:
             raise ValueError(
                 f"Unsupported instrument mode {value!r}. "
-                f"Only {sorted(SUPPORTED_INSTRUMENT_MODES)} is supported in M8; "
-                "listener/server mode is deferred."
+                f"Supported modes: {sorted(SUPPORTED_INSTRUMENT_MODES)} "
+                "('client' = the LIS dials the instrument; 'listener' = the "
+                "instrument dials the LIS, approved scopes only)."
             )
         return value
+
+    @model_validator(mode="before")
+    @classmethod
+    def _listener_fields_may_be_omitted(cls, data):
+        """In listener mode `parser_key` and `identity_prefix` may be omitted.
+
+        They stay required keys in client mode, so a client config that omits
+        them keeps failing with pydantic's own "Field required" errors.
+        """
+        if isinstance(data, dict) and data.get("mode") == "listener":
+            data = dict(data)
+            data.setdefault("parser_key", None)
+            data.setdefault("identity_prefix", None)
+        return data
+
+    @model_validator(mode="after")
+    def _mode_specific_requirements(self) -> "InstrumentConfig":
+        if self.mode == "client":
+            return self._validate_client()
+        return self._validate_listener()
+
+    def _validate_client(self) -> "InstrumentConfig":
+        missing = [f for f in ("parser_key", "identity_prefix") if getattr(self, f) is None]
+        if missing:
+            raise ValueError(f"client mode requires non-null {missing}")
+        present = [f for f in _LISTENER_ONLY_FIELDS if getattr(self, f) is not None]
+        if present:
+            raise ValueError(f"{present} are listener-mode fields and must be omitted in client mode")
+        return self
+
+    def _validate_listener(self) -> "InstrumentConfig":
+        if (self.instrument_name, self.port) not in LISTENER_APPROVED_SCOPES:
+            raise ValueError(
+                f"listener mode is not approved for instrument_name="
+                f"{self.instrument_name!r} on port {self.port}. Approved scopes "
+                f"(OD-XN-1): {sorted(LISTENER_APPROVED_SCOPES)}. Other instruments "
+                "and ports require their own transport evidence and approval."
+            )
+        try:
+            ipaddress.ip_address(self.host)
+        except ValueError:
+            raise ValueError(
+                f"listener mode requires host to be a literal IP bind address, got {self.host!r}"
+            ) from None
+        if not self.allowed_peers:
+            raise ValueError("listener mode requires a non-empty allowed_peers list")
+        normalised = []
+        for peer in self.allowed_peers:
+            try:
+                normalised.append(str(ipaddress.ip_address(peer)))
+            except ValueError:
+                raise ValueError(f"allowed_peers entry {peer!r} is not a literal IP address") from None
+        self.allowed_peers = normalised
+        if self.ack_policy not in LISTENER_ACK_POLICIES:
+            raise ValueError(
+                f"listener ack_policy {self.ack_policy!r} is not available. Implemented: "
+                f"{sorted(LISTENER_ACK_POLICIES)} (the field-verified baseline). "
+                "'ack_per_message_after_raw_commit' is NOT FIELD-VERIFIED (OD-XN-4)."
+            )
+        if self.ingestion_stage not in LISTENER_INGESTION_STAGES:
+            raise ValueError(
+                f"listener ingestion_stage {self.ingestion_stage!r} is not available. "
+                f"Implemented: {sorted(LISTENER_INGESTION_STAGES)} (G1 raw capture). "
+                "'observations' (G2) is not implemented; OD-XN-3 is open."
+            )
+        if self.parser_key is not None:
+            raise ValueError(
+                "listener mode must omit parser_key: no ASTM parser is registered "
+                "in XN-550 Phase 1 (G1 raw capture only)"
+            )
+        if self.classification_policy is not None:
+            raise ValueError(
+                "listener mode must omit classification_policy: no XN-550 "
+                "classification policy exists in Phase 1"
+            )
+        return self
 
 
 def load_instrument_configs(path: Path) -> list[InstrumentConfig]:
@@ -82,6 +197,25 @@ def load_instrument_configs(path: Path) -> list[InstrumentConfig]:
             'or an object with an "instruments" list.'
         )
     return [InstrumentConfig.model_validate(item) for item in raw]
+
+
+def ensure_unique_listener_bindings(configs: Iterable[InstrumentConfig]) -> None:
+    """Fail loudly if two listener configs would bind the same (host, port).
+
+    Contract §4.2. Called at integration-service startup over the enabled
+    instruments only.
+    """
+    seen: dict[tuple[str, int], str] = {}
+    for config in configs:
+        if config.mode != "listener":
+            continue
+        binding = (str(ipaddress.ip_address(config.host)), config.port)
+        if binding in seen:
+            raise ValueError(
+                f"listener configs {seen[binding]!r} and {config.key!r} both bind "
+                f"{binding[0]}:{binding[1]}"
+            )
+        seen[binding] = config.key
 
 
 class Settings(BaseSettings):

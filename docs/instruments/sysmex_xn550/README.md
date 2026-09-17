@@ -1,6 +1,6 @@
 # Sysmex XN-550 — Engineering Summary
 
-**Status: field-verified reference instrument. No production integration exists.**
+**Status: field-verified reference instrument.** Phase 1 (G1 raw capture: listener transport, message assembly, exact raw persistence) is implemented and **disabled by default**. There is no parser, no result visibility and no clinical integration (§6).
 
 This is the developer-facing summary of what the XN-550 has been *observed* to do. The full survey record, including the parts that are superseded, is in [`FIELD_REPORT.md`](FIELD_REPORT.md).
 
@@ -18,7 +18,7 @@ A **third session on 17 September 2026** — see [`VALIDATION_2026-09-17.md`](VA
 
 This establishes the XN-550 as the **second instrument in this project with any field evidence at all** (after the Mindray BC-5150), and it answers the first question `docs/09` §11.3 says must be answered before parser work: *which side initiates the connection?*
 
-**What this does not do:** it does not make the XN-550 integrable today. There is no XN-550 parser, no configuration entry, and — most consequentially — the observed transport direction is the opposite of what the current LIS supports. See §6.
+**What this does not do:** the evidence itself integrates nothing. At the time of the survey, the observed transport direction was the opposite of what the LIS supported. Phase 1 has since added approved-scope listener mode and raw capture. There is still no XN-550 parser, no deployment configuration entry and no result visibility. See §6.
 
 ---
 
@@ -52,14 +52,14 @@ This establishes the XN-550 as the **second instrument in this project with any 
 | ICMP ping to the instrument | Fails; ARP presence is the reliable link check | **VERIFIED** |
 | Windows inbound firewall rule | Required on the listening PC | **VERIFIED** |
 
-> **The connection role is the headline finding.** `backend/app/core/config.py` sets `SUPPORTED_INSTRUMENT_MODES = {"client"}` — the LIS dials out and cannot listen. `docs/09` §11.3 states that an instrument which expects the LIS to listen *"cannot be connected at all without implementing listener mode."*
+> **The connection role is the headline finding.** At the time of the survey `backend/app/core/config.py` set `SUPPORTED_INSTRUMENT_MODES = {"client"}`: the LIS could only dial out, not listen. `docs/09` §11.3 states that an instrument which expects the LIS to listen *"cannot be connected at all without implementing listener mode."*
 >
 > **Settled for the tested configuration (sessions 2 and 3).** The 15 September survey only showed the XN-550 *operating* as a client; the reverse direction was not tested then. It has since been tested:
 >
 > - **Evidence:** in the tested configuration (ASTM output, TCP port 5001), the XN-550 dials the LIS. When the LIS dialled the instrument's port 5001, its SYNs were **silently dropped** — neither SYN-ACK nor RST ([`VALIDATION_2026-09-16.md`](VALIDATION_2026-09-16.md) §5.1–§5.3; [`VALIDATION_2026-09-17.md`](VALIDATION_2026-09-17.md) §20.1). **Listener mode is therefore a prerequisite for integrating this tested configuration**; stop condition S7 is met.
 > - **Scope:** this is not a claim about every XN-550 port or output configuration. Whether the instrument accepts inbound connections on **any other port is UNKNOWN**; no port scan was performed or is authorised (§7, item 1).
 > - **Evidence vs. approval:** the field evidence establishes the prerequisite. The architecture decision to build listener mode is a separate approval, recorded as **OD-XN-1 (approved)** in [`M9.2_IMPLEMENTATION_CONTRACT.md`](M9.2_IMPLEMENTATION_CONTRACT.md) §0.3.
-> - **Implementation:** listener mode is **not implemented** yet (§6).
+> - **Implementation:** listener mode is implemented for **G1 raw capture only**, restricted in code to this approved scope, and **disabled by default** (§6).
 
 ---
 
@@ -153,18 +153,20 @@ This is the XN-550 equivalent of the identity question `docs/09` §10 raises for
 
 ## 6. Current integration boundary
 
-**REPO-CONFIRMED — nothing about the XN-550 is integrated, and nothing in this import changes that:**
+**REPO-CONFIRMED — Phase 1 (G1 raw capture) is implemented and disabled by default. Nothing beyond raw capture is integrated** ([`M9.2_IMPLEMENTATION_CONTRACT.md`](M9.2_IMPLEMENTATION_CONTRACT.md) §19.4):
 
 | Layer | State |
 |---|---|
-| Parser | **None.** `backend/app/integration/parsers/registry.py` contains exactly one entry, `bc5150_hl7`. Resolution is exact-match with no fallback; an unknown `parser_key` raises `ParserNotRegisteredError` at startup |
-| ASTM support | **None anywhere in production code.** The ingestion path is HL7 v2.3.1 over MLLP |
-| Transport | **Client-only.** `SUPPORTED_INSTRUMENT_MODES = {"client"}`; listener mode is explicitly deferred in `backend/app/core/config.py`. That remains the code state. Listener mode for the tested XN-550 configuration is now architecture-approved (contract OD-XN-1) but **not implemented** |
-| Configuration | **No XN-550 entry** in `instruments.example.json`; enabling one today would fail loudly at startup |
-| Classification | Policies are BC-5150-specific; no XN-550 policy exists |
-| Database | **Unchanged.** No migration, no schema change, no new model was introduced by this import |
+| Parser | **None.** `backend/app/integration/parsers/registry.py` still contains exactly one entry, `bc5150_hl7`; Phase 1 deliberately registers no ASTM key. Resolution is exact-match with no fallback; an unknown `parser_key` raises `ParserNotRegisteredError` at startup |
+| ASTM support | **Message boundaries only.** `app/integration/astm/assembler.py` finds `H`…`L` message boundaries in the byte stream (fragmentation-safe, many messages per session). No field content is parsed anywhere in production code. The HL7 v2.3.1 / MLLP path is unchanged |
+| Transport | `SUPPORTED_INSTRUMENT_MODES = {"client", "listener"}`. Listener mode (`app/integration/listener.py`) is allowed only for `LISTENER_APPROVED_SCOPES = {("Sysmex XN-550", 5001)}` (OD-XN-1). It requires a peer IP allowlist, keeps one session per instrument (a new connection supersedes the old one), never closes idle sessions, and writes nothing but one `0x06` per read. There is no NAK path. The MLLP client is unchanged |
+| Configuration | **No XN-550 entry** in `instruments.example.json` or the deployment configuration. A listener entry defaults to `enabled: false` (G0), must use `ingestion_stage: "raw_only"` and `ack_policy: "ack_per_read_on_receive"`, and must omit `parser_key` and `classification_policy` |
+| Persistence | T1 only (`app/integration/raw_capture.py`): one `instrument_sessions` row per connection, and one `instrument_messages` row per complete message or fragment with exact `raw_bytes`, `raw_sha256` and stream offsets. Complete messages stay `Pending` (no T2); fragments and control/LF/non-ASCII bytes are recorded as `UNPARSEABLE` with their token |
+| Classification | Policies are BC-5150-specific; no XN-550 policy exists. Nothing is ever promoted to `PATIENT_RESULT` |
+| Database | Migration `5d2e8b7c41a9` adds `instrument_sessions` plus nullable raw-capture provenance columns on `instrument_messages` (`docs/04` §35). No clinical table changed; XN-550 data creates no Patient / Visit / Order / TestRun / Result rows |
+| Results API / frontend | **None.** G2 observations are not implemented (OD-XN-3 open) |
 
-**This import adds documentation and one test fixture. It changes no production behaviour.**
+**The original evidence import added documentation and one test fixture only.** Phase 1 adds the raw-capture foundation described above. With no enabled listener entry it changes no runtime behaviour.
 
 > Related repository artefact, for the avoidance of doubt: `docs/09` §4.2 warns that `backend/mesin_simulator.py` emits ASTM-style records labelled `Sysmex_XN-550` and **must never be cited as evidence**. That warning stands. This document — not that script — is the XN-550 evidence record. The two happen to agree that the XN-550 speaks ASTM, which is a coincidence rather than corroboration.
 
@@ -242,7 +244,12 @@ All three `C` records in this capture are `C|1||`: structurally present, **paylo
 | [`FIELD_REPORT.md`](FIELD_REPORT.md) | Full imported survey report, with PHI redacted and superseded sections marked |
 | [`VALIDATION_2026-09-16.md`](VALIDATION_2026-09-16.md) | Session 2 record — transport role, framing, `O`-4 mapping (with corrections dated 2026-09-17) |
 | [`VALIDATION_2026-09-17.md`](VALIDATION_2026-09-17.md) | Session 3 record — controlled retransmission, GT-3A, cross-day comparison, RECONNECT-01/02 |
-| [`M9.2_IMPLEMENTATION_CONTRACT.md`](M9.2_IMPLEMENTATION_CONTRACT.md) | Design-only implementation contract (2026-09-17): listener transport, CR-record message assembly, raw-first persistence, field confidence levels, unlinked-observation layer, identity and duplicate strategy, tests and acceptance criteria. Changes no code or schema; its "M9.2" label is **not** the `docs/07` BC-5150 deduplication milestone (see its §0.1) |
+| [`M9.2_IMPLEMENTATION_CONTRACT.md`](M9.2_IMPLEMENTATION_CONTRACT.md) | Design-only implementation contract (2026-09-17): listener transport, CR-record message assembly, raw-first persistence, field confidence levels, unlinked-observation layer, identity and duplicate strategy, tests and acceptance criteria. Its "M9.2" label is **not** the `docs/07` BC-5150 deduplication milestone (see its §0.1). Phase 1 implementation note: §19.4 |
+| [`../../../backend/app/integration/listener.py`](../../../backend/app/integration/listener.py) | Phase 1 listener transport (contract §4) |
+| [`../../../backend/app/integration/astm/assembler.py`](../../../backend/app/integration/astm/assembler.py) | Phase 1 pure CR-record message assembler (contract §5) |
+| [`../../../backend/app/integration/raw_capture.py`](../../../backend/app/integration/raw_capture.py) | Phase 1 T1 raw-capture store (contract §9.3) |
+| [`../../../backend/alembic/versions/5d2e8b7c41a9_xn550_phase1_raw_capture.py`](../../../backend/alembic/versions/5d2e8b7c41a9_xn550_phase1_raw_capture.py) | Phase 1 migration (contract §9.1, §9.2) |
+| `backend/tests/test_xn550_assembler.py`, `test_xn550_listener.py`, `test_xn550_listener_config.py`, `test_xn550_raw_capture_db.py` | Phase 1 tests: assembler (DB-free), loopback listener (DB-free), configuration and wiring (DB-free), T1 persistence plus end-to-end (`lis_marina_permata_test`) |
 | [`../../../backend/tests/fixtures/instruments/sysmex_xn550/patient_result_001.astm`](../../../backend/tests/fixtures/instruments/sysmex_xn550/patient_result_001.astm) | Redacted raw ASTM patient-result message, 2 824 bytes, 49 records |
 | [`../../../backend/tests/test_xn550_astm_contract.py`](../../../backend/tests/test_xn550_astm_contract.py) | Fixture contract — 16 tests, DB-free, no production code exercised (§8) |
 

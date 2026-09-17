@@ -5,13 +5,15 @@ repository-resident test: it provisions a **disposable** PostgreSQL database
 from empty using the real Alembic environment (``python -m alembic upgrade``),
 then asserts the resulting revision and structural schema invariants.
 
-Scope: upgrade / provisioning, plus the two downgrades M9.1a and M9.1b add.
+Scope: upgrade / provisioning, plus the downgrades M9.1a, M9.1b and XN-550
+Phase 1 add.
 
 * This is NOT a general downgrade test. ``b1f9dbe772fa.downgrade()`` is a
   known separate defect (unnamed-FK drops), still untested here; R0 downgrade
-  was validated separately in scratch. ``27e00bcff992`` (M9.1a ``users``) and
-  ``28aa370f5dbe`` (M9.1b ``audit_events``) are the two exceptions — their
-  downgrades are real and are exercised below.
+  was validated separately in scratch. ``27e00bcff992`` (M9.1a ``users``),
+  ``28aa370f5dbe`` (M9.1b ``audit_events``) and ``5d2e8b7c41a9`` (XN-550
+  Phase 1 raw capture) are the exceptions — their downgrades are real and are
+  exercised below.
 * This test does NOT create, fix or assert-away F-2
   (``UNIQUE(patients.nomor_rm)``). It asserts F-2 stays **absent**, documenting
   that the chain reproduces the fresh-install schema minus that pending
@@ -63,7 +65,8 @@ PG = dict(
 # --------------------------------------------------------------------------- #
 
 R0 = "8e973e84a9d7"
-HEAD = "28aa370f5dbe"
+M9_1B = "28aa370f5dbe"
+HEAD = "5d2e8b7c41a9"
 EXPECTED_CHAIN = [
     R0,
     "b1f9dbe772fa",
@@ -72,6 +75,7 @@ EXPECTED_CHAIN = [
     "c5465739f048",
     "4aff9e134f16",
     "27e00bcff992",
+    M9_1B,
     HEAD,
 ]
 
@@ -469,6 +473,7 @@ _FINAL_TABLES = {
     "audit_events",
     "doctors",
     "instrument_messages",
+    "instrument_sessions",
     "instruments",
     "orders",
     "patients",
@@ -484,6 +489,7 @@ _FINAL_SEQUENCES = {f"{t}_id_{c}_seq" for t, c in [
     ("audit_events", "audit"),
     ("doctors", "dokter"),
     ("instrument_messages", "message"),
+    ("instrument_sessions", "session"),
     ("instruments", "instrument"),
     ("orders", "order"),
     ("patients", "pasien"),
@@ -498,6 +504,17 @@ _FINAL_SEQUENCES = {f"{t}_id_{c}_seq" for t, c in [
 _AUDIT_EVENTS_INDEXES = {
     "idx_audit_events_entity",
     "idx_audit_events_actor",
+}
+_XN550_PHASE1_MESSAGE_COLUMNS = (
+    "id_session", "session_message_index", "stream_offset_start", "stream_offset_end",
+    "raw_bytes", "raw_sha256", "raw_length", "first_byte_at", "read_count",
+    "framing", "parser_key", "parser_version", "duplicate_of_message_id",
+)
+_XN550_PHASE1_INDEXES = {
+    "idx_instrument_sessions_instrument_opened",
+    "idx_instrument_messages_instrument_sha256",
+    "idx_instrument_messages_instrument_received",
+    "idx_instrument_messages_duplicate_of",
 }
 _M8_4_INDEXES = {
     "ix_test_runs_id_instrument_id_order",
@@ -541,14 +558,19 @@ def test_fresh_install_constraint_and_index_counts(scratch_at_head: str) -> None
     # action, entity_type, entity_id, occurred_at, outcome — id_user,
     # state_before, state_after are nullable), +3 indexes (audit_events_pkey,
     # idx_audit_events_entity, idx_audit_events_actor).
+    # XN-550 Phase 1 (5d2e8b7c41a9) adds `instrument_sessions` (+1 PK, +1 FK
+    # to instruments, +14 NOT NULL columns, +2 indexes: pkey and
+    # idx_instrument_sessions_instrument_opened) and 13 nullable columns on
+    # `instrument_messages` (+2 FK, +1 UNIQUE uk_instrument_messages_session_offset
+    # with its backing index, +2 CHECK, +3 non-unique indexes).
     # Numbers below are measured against the real migration output on a
     # throwaway scratch database, not estimated.
-    assert snap.count("p") == 13
-    assert snap.count("u") == 6
-    assert snap.count("f") == 11
-    assert snap.count("c") == 0
-    assert len(snap.not_null_columns()) == 56
-    assert len(snap.index_names()) == 26
+    assert snap.count("p") == 14
+    assert snap.count("u") == 7
+    assert snap.count("f") == 14
+    assert snap.count("c") == 2
+    assert len(snap.not_null_columns()) == 70
+    assert len(snap.index_names()) == 32
 
 
 def test_fresh_install_has_m1_m82_m84_objects(scratch_at_head: str) -> None:
@@ -625,6 +647,39 @@ def test_fresh_install_has_m1_m82_m84_objects(scratch_at_head: str) -> None:
     # single FK above must be id_user, not entity_id.
     assert audit_fks[0][0] != "fk_audit_events_entity_id", "entity_id must not become a foreign key"
 
+    # 5d2e8b7c41a9 — XN-550 Phase 1 raw capture (contract §9.1, §9.2).
+    assert "instrument_sessions" in snap.tables
+    for column in ("closed_at", "close_reason"):
+        assert snap.columns[("instrument_sessions", column)]["nullable"] is True
+    for column in (
+        "id_session", "id_instrument", "transport_mode", "local_address", "local_port",
+        "peer_address", "peer_port", "ack_policy", "opened_at", "bytes_received",
+        "reads_count", "acks_sent", "messages_completed", "fragments_count",
+    ):
+        assert snap.columns[("instrument_sessions", column)]["nullable"] is False, column
+    for column in _XN550_PHASE1_MESSAGE_COLUMNS:
+        assert snap.columns[("instrument_messages", column)]["nullable"] is True, (
+            f"instrument_messages.{column} must be nullable (additive, no backfill)"
+        )
+    assert snap.columns[("instrument_messages", "raw_bytes")]["type"] == "bytea"
+    assert snap.columns[("instrument_messages", "raw_sha256")]["len"] == 64
+    assert _XN550_PHASE1_INDEXES <= snap.index_names()
+    assert {
+        "uk_instrument_messages_session_offset",
+        "ck_instrument_messages_raw_length",
+        "ck_instrument_messages_raw_sha256",
+    } <= snap.constraint_names()
+    # Byte identity is deliberately NOT unique: same-day retransmissions are
+    # byte-identical and every delivery is kept (contract §9.2, §13).
+    assert not any(
+        table == "instrument_messages" and is_unique and "raw_sha256" in definition
+        for table, _, is_unique, definition in snap.indexes
+    )
+    assert not any(
+        table == "instrument_messages" and "raw_sha256" in definition
+        for table, definition in snap.unique_constraint_columns()
+    )
+
 
 def test_fresh_install_dropped_legacy_columns(scratch_at_head: str) -> None:
     snap = SchemaSnapshot(scratch_at_head)
@@ -660,18 +715,50 @@ def test_f2_absent_at_head(scratch_at_head: str) -> None:
     assert "patients_nomor_rm_key" not in snap.index_names()
 
 
+def test_xn550_phase1_migration_downgrade_removes_only_its_objects(scratch_at_head: str) -> None:
+    """``5d2e8b7c41a9``'s downgrade is exercised here: one step down must
+    remove ``instrument_sessions`` and exactly the 13 added
+    ``instrument_messages`` columns, constraints and indexes — nothing else —
+    and upgrading back to head must restore the same structure. Runs first
+    among the downgrade tests (each later one passes through this downgrade)."""
+    before = SchemaSnapshot(scratch_at_head)
+    assert "instrument_sessions" in before.tables
+
+    _alembic_or_fail(scratch_at_head, "downgrade", M9_1B)
+    mid = SchemaSnapshot(scratch_at_head)
+    assert mid.alembic_version == M9_1B
+    assert mid.tables == before.tables - {"instrument_sessions"}
+    removed_columns = {("instrument_messages", c) for c in _XN550_PHASE1_MESSAGE_COLUMNS}
+    assert set(mid.columns) == {
+        key for key in before.columns if key[0] != "instrument_sessions"
+    } - removed_columns
+    assert not (_XN550_PHASE1_INDEXES & mid.index_names())
+    assert (mid.count("p"), mid.count("u"), mid.count("f"), mid.count("c")) == (13, 6, 11, 0)
+    assert len(mid.not_null_columns()) == 56
+    assert len(mid.index_names()) == 26
+
+    _alembic_or_fail(scratch_at_head, "upgrade", "head")
+    after = SchemaSnapshot(scratch_at_head)
+    assert after.alembic_version == HEAD
+    assert after.tables == before.tables
+    assert after.columns == before.columns
+    assert after.constraint_names() == before.constraint_names()
+    assert after.index_names() == before.index_names()
+
+
 def test_audit_events_migration_downgrade_drops_audit_events_cleanly(scratch_at_head: str) -> None:
-    """``28aa370f5dbe``'s downgrade is exercised here: one step down must
-    remove ``audit_events`` and nothing else, and upgrading back to head must
-    be idempotent. Runs before the ``users`` downgrade test below, which
-    downgrades two steps and removes both tables together."""
+    """``28aa370f5dbe``'s downgrade is exercised here. Downgrading from head to
+    ``27e00bcff992`` necessarily passes through ``5d2e8b7c41a9``'s downgrade
+    first (``instrument_sessions``), then removes ``audit_events``; upgrading
+    back to head must be idempotent. Runs before the ``users`` downgrade test
+    below, which downgrades further and removes ``users`` too."""
     before = SchemaSnapshot(scratch_at_head)
     assert "audit_events" in before.tables
 
     _alembic_or_fail(scratch_at_head, "downgrade", "27e00bcff992")
     mid = SchemaSnapshot(scratch_at_head)
     assert "audit_events" not in mid.tables
-    assert mid.tables == before.tables - {"audit_events"}
+    assert mid.tables == before.tables - {"audit_events", "instrument_sessions"}
     assert mid.alembic_version == "27e00bcff992"
 
     _alembic_or_fail(scratch_at_head, "upgrade", "head")
@@ -683,13 +770,13 @@ def test_audit_events_migration_downgrade_drops_audit_events_cleanly(scratch_at_
 def test_users_migration_downgrade_drops_users_cleanly(scratch_at_head: str) -> None:
     """Unlike ``b1f9dbe772fa``'s known-broken downgrade (F-4, a separate
     defect), ``27e00bcff992``'s downgrade is exercised here. Downgrading from
-    head to ``4aff9e134f16`` necessarily passes through ``28aa370f5dbe``'s
-    own downgrade first — ``audit_events.id_user`` references ``users``, so
-    Alembic must drop the dependent table before the one it references — so
-    both ``audit_events`` and ``users`` are removed together; upgrading back
-    to head must be idempotent. Placed last among the ``scratch_at_head``
-    tests — it is the only one that mutates the shared module-scoped fixture
-    database this far."""
+    head to ``4aff9e134f16`` necessarily passes through ``5d2e8b7c41a9``'s and
+    ``28aa370f5dbe``'s own downgrades first — ``audit_events.id_user``
+    references ``users``, so Alembic must drop the dependent table before the
+    one it references — so ``instrument_sessions``, ``audit_events`` and
+    ``users`` are removed together; upgrading back to head must be idempotent.
+    Placed last among the ``scratch_at_head`` tests — it is the only one that
+    mutates the shared module-scoped fixture database this far."""
     before = SchemaSnapshot(scratch_at_head)
     assert "users" in before.tables
     assert "audit_events" in before.tables
@@ -698,7 +785,7 @@ def test_users_migration_downgrade_drops_users_cleanly(scratch_at_head: str) -> 
     mid = SchemaSnapshot(scratch_at_head)
     assert "users" not in mid.tables
     assert "audit_events" not in mid.tables
-    assert mid.tables == before.tables - {"users", "audit_events"}
+    assert mid.tables == before.tables - {"users", "audit_events", "instrument_sessions"}
     assert mid.alembic_version == "4aff9e134f16"
 
     # Restore head so the fixture is unchanged for any later test — none use

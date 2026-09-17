@@ -7,6 +7,7 @@ from app.models.instrument import Instrument
 from app.models.patient import Patient
 from app.models.visit import Visit
 from app.models.order import Order
+from app.models.instrument_session import InstrumentSession
 from app.models.instrument_message import InstrumentMessage
 from app.models.test_run import TestRun
 from app.models.result import Result
@@ -23,6 +24,7 @@ __all__ = [
     "Patient",
     "Visit",
     "Order",
+    "InstrumentSession",
     "InstrumentMessage",
     "TestRun",
     "Result",
