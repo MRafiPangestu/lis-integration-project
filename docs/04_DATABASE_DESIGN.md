@@ -1853,4 +1853,4 @@ Sejak XN-550 G2 (Bagian 36), tahap T2 yang sama juga mengisi `duplicate_of_messa
 
 **Index.** `(id_instrument, fingerprint_version, analysis_fingerprint, id_result_set)` untuk pencarian sidik jari; `(received_at DESC, id_result_set DESC)` dan `(id_instrument, received_at DESC, id_result_set DESC)` untuk daftar API. **Sengaja tidak ada** index pada `sample_label`, tidak ada index `(id_result_set)` terpisah pada *item* (sudah dilayani index bawaan `UNIQUE`), dan tidak ada `UNIQUE` pada kolom konten mana pun.
 
-**Status.** Tabel ini hanya terisi bila `ingestion_stage = "observations"` (G2). Selama *soak* G1, konfigurasi produksi tetap `raw_only` sehingga kedua tabel tetap kosong di produksi (kontrak §19.7).
+**Status.** Tabel ini hanya terisi bila `ingestion_stage = "observations"` (G2), dan saat ini hanya diisi di lingkungan pengembangan dan pengujian. Belum ada *deployment* produksi (kontrak §19.9). Bila nanti produksi dipasang, konfigurasinya dimulai pada `raw_only` selama *soak* G1 — sehingga kedua tabel tetap kosong di produksi sampai gerbang §19.7 terpenuhi.
