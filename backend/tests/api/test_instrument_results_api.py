@@ -363,3 +363,47 @@ def test_xn550_observation_modules_import_nothing_clinical(relative_path):
         elif isinstance(node, ast.ImportFrom):
             assert node.module not in FORBIDDEN_MODULES, node.module
             assert not {alias.name for alias in node.names} & FORBIDDEN_NAMES, (node.module, [a.name for a in node.names])
+
+
+# --------------------------------------------------------------------------- #
+# Development end-to-end: the API response the React views actually consume
+# --------------------------------------------------------------------------- #
+
+FRONTEND_TYPES = BACKEND.parent / "frontend" / "src" / "types" / "api.ts"
+TYPE_OF_PAYLOAD = {
+    "InstrumentResultSetSummary": ("list", "items"),
+    "PaginatedInstrumentResultSetResponse": ("list", None),
+    "InstrumentResultSetDetail": ("detail", None),
+    "InstrumentResultItemResponse": ("detail", "items"),
+    "InstrumentResultDeliveryResponse": ("detail", "deliveries"),
+    "InstrumentResultProvenanceResponse": ("detail", "provenance"),
+}
+
+
+def _declared_fields(interface: str) -> set:
+    source = FRONTEND_TYPES.read_text(encoding="utf-8")
+    start = source.index(f"export interface {interface} {{")
+    body = source[start:source.index("\n}", start)]
+    return {
+        line.strip().split(":")[0].rstrip("?")
+        for line in body.splitlines()[1:]
+        if line.strip() and not line.strip().startswith("//")
+    }
+
+
+@pytest.mark.parametrize("interface", sorted(TYPE_OF_PAYLOAD))
+def test_api_payload_matches_the_frontend_types_field_for_field(client, analyst, data, interface):
+    """The React views mirror these shapes by hand; nothing else would catch a rename."""
+    listing = client.get("/api/instrument-results", params=RANGE, headers=analyst)
+    detail = client.get(f"/api/instrument-results/{data['sets']['a']}", headers=analyst)
+    assert listing.status_code == 200 and detail.status_code == 200, (listing.text, detail.text)
+    payloads = {"list": listing.json(), "detail": detail.json()}
+
+    endpoint, member = TYPE_OF_PAYLOAD[interface]
+    payload = payloads[endpoint]
+    if member is not None:
+        value = payload[member]
+        payload = value[0] if isinstance(value, list) else value
+        assert payload, f"{interface}: the fixture produced no {member} to compare"
+
+    assert set(payload) == _declared_fields(interface), interface
