@@ -7,9 +7,11 @@ standing engineering summary is [`README.md`](README.md).
 
 The same day also produced **Run03**, a corpus-expansion run after a break, with a fresh
 capture and listener (§15), and the cumulative corpus status that follows from it (§16).
-It closes with **POWER-CYCLE-01**, a controlled normal instrument restart with the cable
+It then records **POWER-CYCLE-01**, a controlled normal instrument restart with the cable
 connected (§17), and the instrument-screen observations made during that restart, kept
-separate because they are not LIS evidence (§18).
+separate because they are not LIS evidence (§18). It closes with **MULTI-SELECT-01**, a
+controlled multi-select/batch transmit observation (§19), and the final Day-18 status and
+open items (§20).
 
 Evidence labels are those of `../../09_PHYSICAL_INSTRUMENT_VALIDATION.md` §2, as used
 in the 2026-09-16 record: **VERIFIED · CANDIDATE · UNVERIFIED · UNKNOWN**, plus the
@@ -33,8 +35,8 @@ specimen mapping, deduplication key or schema change follows from anything below
 | Instrument | Sysmex XN-550 (`id_instrument = 3`), `10.0.0.11`, MAC `74:fe:48:a9:dc:34` |
 | LIS host | `10.0.0.10`, MAC `00:e0:4c:14:41:48`, interface `Ethernet` (same USB adapter as 2026-09-16) |
 | TCP port | **5001** |
-| Runs | **run01** 10:02–12:25 (first connection, GT-1, GT-2, GT-3A; RECONNECT-01/02 inside the same capture, listener output in `run02_reconnect/`) · **run03_corpus** 14:20–14:52 (fresh capture, listener and self-test after a break) · **run04_power_cycle** 15:09–15:37 (POWER-CYCLE-01; fresh capture, listener, self-test and link-state logger) |
-| Repository | `refactor/orm-architecture` at `c1c41e2` during run01/run02, `af2196b` during run03, `c69b665` during run04; **unchanged during every capture phase** |
+| Runs | **run01** 10:02–12:25 (first connection, GT-1, GT-2, GT-3A; RECONNECT-01/02 inside the same capture, listener output in `run02_reconnect/`) · **run03_corpus** 14:20–14:52 (fresh capture, listener and self-test after a break) · **run04_power_cycle** 15:09–15:37 (POWER-CYCLE-01; fresh capture, listener, self-test and link-state logger) · **run05_multiselect** 15:48–15:58 (MULTI-SELECT-01; fresh capture, listener and self-test) |
+| Repository | `refactor/orm-architecture` at `c1c41e2` during run01/run02, `af2196b` during run03, `c69b665` during run04, `cf78086` during run05; **unchanged during every capture phase** |
 | Evidence root | `D:\SurveyLIS\evidence\2026-09-17\` — outside the repository |
 | PHI | **All raw payloads, the byte stream, the pcaps carrying payload and the ground-truth notes are PHI-bearing** and stay in the evidence root. No patient name, Sample No. value or other identifier appears in this document |
 | Listener | `D:\SurveyLIS\astm_raw_capture.py`, SHA-256 `4cb47218…aa710ed` (same tool as 2026-09-16); loopback self-test **passed** before use (1 044 bytes, all 256 values, SHA-256 identical) |
@@ -126,6 +128,18 @@ payload file):
 | `run04_power_cycle/power_cycle_analysis_notes.md` | 4 390 | `8d95269c7e7eef74b438e005d66709f762a3856b1320e3407a6c00ba40cc9519` | Facts, operator ground truth, interpretation, limits |
 | `run04_power_cycle/run04_power_cycle_final_hashes.sha256` | 995 | `1f0e504f667ce319778259689e637381ff6c556056a9d887f0b4d0ccb44011ee` | Hash list of all 10 run04 files (includes listener manifest and self-test); re-verified 10/10 |
 
+MULTI-SELECT-01 evidence (`run05_multiselect/`). The message files and byte stream are **PHI-bearing**:
+
+| File | Bytes | SHA-256 | Role | PHI |
+|---|---|---|---|---|
+| `run05_multiselect/multi05_conn01_rx.bin` | 11 051 | `b1e445dafcf710636ddf5f15ea2636154f8b751681c8d4ef852bc75ae3e29ba1` | Authoritative byte stream — all five messages; identical to the pcap reassembly | **Yes** |
+| `run05_multiselect/multiselect_msg_01.astm` … `_05.astm` | 1 761 – 2 913 | see §19.3 | The five messages | **Yes** |
+| `run05_multiselect/session_2026-09-17_xn550_run05_multiselect.pcapng` | 14 268 | `2d70053b79238528abdc988b000272e250921f5ba46b21a51d2dd6bc525c6ab3` | Capture 15:48:52–15:58:04 (32 frames); frames 30–32 are shutdown teardown | **Yes** |
+| `run05_multiselect/multi05_conn01_events.jsonl` | 3 956 | `9283dd41d9cbaab8afbbe9cecb015e55594677d8604cbb97d2dcc9e370ae28d3` | Per-read receive/ACK events | No |
+| `run05_multiselect/multiselect_manifest.jsonl` | 3 898 | `68798b9147ad54b1aecb93ea5fe7997a05b1fdc06f7e4176a948ecdec751674d` | Header, pre-registration, outcome, close | No |
+| `run05_multiselect/multiselect_analysis_notes.md` | 4 002 | `e6cf105a6c41ed963444748e11d10fbb99fa54afe1d7c40ea02cd879deae447d` | Facts, ground truth, classification, limits | No |
+| `run05_multiselect/run05_multiselect_final_hashes.sha256` | 1 264 | `ead9da317db99c498fbc9b82f3997709db434e04d473b0bf278fc6df2d1eabca` | Hash list of all 13 run05 files; re-verified 13/13 | No |
+
 ---
 
 ## 4. Session chronology
@@ -169,6 +183,11 @@ payload file):
 | 15:16:32.485 | **One SYN from `10.0.0.11:49671`**; new session established | POWER-CYCLE-01 |
 | 15:16:32 – 15:37:01 | **No application payload** (20 min 28.5 s); instrument screen shows startup and BACKGROUNDCHECK (§18) | Observation |
 | 15:37:44 – 15:37:53 | run04 close: listener then capture stopped; one LIS-side `RST, ACK` on 49671 | Operator shutdown — not evidence |
+| 15:48:49 – 15:49:11 | **run05** setup: self-test passed, capture and listener started | Pre-flight |
+| 15:49:28.531 | Session `10.0.0.11:49693` established; idle, 0 bytes | — |
+| 15:54:01 | MULTI-SELECT-01 pre-registered (five records, operator safety confirmation) | Controlled — declared |
+| 15:54:16.395 – 15:54:16.939 | **Five messages** from one multi-select transmit action (§19) | **Controlled** |
+| 15:57:56 – 15:58:04 | run05 close: listener then capture stopped; one LIS-side `RST, ACK` on 49693 | Operator shutdown — not evidence |
 
 ---
 
@@ -448,7 +467,9 @@ reconnect remains unknown.
 | `H`-5 sender (instrument model/serial) populated | **VERIFIED** | All 9 raw messages across three sessions carry one identical `H` record; populated fields `H`-1, `H`-2, `H`-5, `H`-13 | — |
 | `O`-3 empty; `O`-4 = on-screen Sample No. (component 3) | **VERIFIED** | GT-2 (2026-09-16), GT-1/GT-2, GT-3A, Run03 8/8 | — |
 | No independent specimen identifier in the message | **VERIFIED** (observation) | GT-3A; Run03 | These captures only |
-| `P`-5 population varies between messages | **VERIFIED** (observation) | Run03: populated in 2 of 8, empty in 6; empty or absent in every other 2026-09-16/17 message; populated in the September fixture | **Cause UNKNOWN**; content not characterised |
+| `P`-5 population varies between messages | **VERIFIED** (observation) | Run03: populated in 2 of 8, empty in 6; run01 and the 2026-09-16 messages: empty or absent; September fixture: populated; **MULTI-SELECT-01 (added 2026-09-17): populated in all 5** | **Cause UNKNOWN**; content not characterised |
+| `P`-8 populated in some messages | **VERIFIED** (observation) | MULTI-SELECT-01 messages 3 and 4; September fixture | **Cause and meaning UNKNOWN**; content not characterised |
+| One multi-select transmit of five selected records → five complete messages, none unselected | **VERIFIED** — one observation | MULTI-SELECT-01 (§19) | Five explicitly selected records only; not a send-all or queue-flush observation |
 | `R`-9 = `F`, `R`-11 = `lab`; `R`-6, `R`-8, `R`-12 empty | **VERIFIED** (observation) | Every raw message captured to date | These observations only |
 | Sample No. embedded in image-path `R`-4 values | **VERIFIED** | All image-bearing messages | PHI in raw evidence |
 | `R`-13 = analysis time | **VERIFIED** (corroborated) | Seq 68: ~6.6 h; Seq 51/58: previous day | — |
@@ -471,7 +492,7 @@ reconnect remains unknown.
 - **Reconnect timer / trigger** — UNVERIFIED (reconnect observed after RECONNECT-02 and POWER-CYCLE-01; semantics unproven).
 - **ACK-timeout retry** and **NAK** behaviour — UNVERIFIED.
 - **Query / pull semantics** (LIS-initiated request for results) — UNVERIFIED.
-- **Queue flush / send-all** behaviour — UNVERIFIED.
+- **Queue flush / automatic send-all** behaviour — UNVERIFIED (MULTI-SELECT-01 observed only an explicit five-record multi-select transmit, §19).
 - **QC, calibration, maintenance and startup message classes** — **NOT OBSERVED** (zero captures).
 - Cross-day retransmission identity as a rule; meaning of the image-path folder date — UNKNOWN.
 - Cause of `P`-5 population differences — UNKNOWN.
@@ -482,7 +503,9 @@ reconnect remains unknown.
 
 **T-CONN-01-03.** Adds controlled reconnect observations (§9, PARTIALLY VERIFIED), one
 observed normal-restart disconnect and reconnect (§17, VERIFIED for that one observation),
-and a second session confirming role, endpoint, framing and persistent-session behaviour. The
+one multi-select transmit delivered as five sequential messages over a single existing
+session (§19), and a second session confirming role, endpoint, framing and
+persistent-session behaviour. The
 inbound-on-other-ports gap from 2026-09-16 §5.2 is unchanged. **Not marked complete.**
 
 **T-CORPUS-01-03 — target ≥20 raw messages across categories.** The test has two
@@ -648,6 +671,9 @@ test **not satisfied** (§12).
 
 POWER-CYCLE-01 (§17) added **no** messages to the corpus: no application payload reached the
 LIS, and the startup background check was seen on the instrument screen only (§18).
+MULTI-SELECT-01 (§19) produced five messages that are, by pre-registered rule, **not** counted
+toward the corpus. The corpus therefore remains **20 messages / 16 distinct payloads / 10
+structures**.
 
 ---
 
@@ -725,7 +751,8 @@ by 15:37:52 — operator shutdown, not evidence. All 10 run04 files hashed and r
 That the XN-550 never resends on startup; that it has no queue; that it never flushes pending
 results; ACK dependence; NAK or ACK-timeout behaviour; query/pull semantics; any universal
 reconnect timer; behaviour on abrupt power loss; genuine rerun behaviour; any QC, calibration,
-maintenance or startup message class.
+maintenance or startup message class; or any causal relation between the startup background
+check and the TCP teardown or reconnect (none is claimed; UNKNOWN).
 
 ---
 
@@ -776,3 +803,119 @@ The sample list shows, immediately after the Seq 61 entry, a Sample No. consisti
 with** the §15.2 hypothesis that the relayed value omitted a prefix; it does **not** establish
 that Seq 60 is 2026-09-16 message C (no sequence number is visible in the photograph, and no
 bytes were captured).
+
+---
+
+## 19. MULTI-SELECT-01 — controlled multi-select/batch transmit observation
+
+### 19.1 Scope
+
+A **controlled multi-select/batch transmit observation**: the instrument UI allows several
+completed records to be selected in the results table and transmitted together. It is
+**not** a genuine rerun and **not** a send-all or queue-flush test, and it is not described
+in those terms.
+
+### 19.2 Operator ground truth (pre-registered 15:54:01, before any selection)
+
+- **Exactly five completed records:** on-screen Seq **49, 48, 47, 46, 45** (analysis dated
+  2026-09-16). Sample No. values are in the external notes only.
+- **Baseline check before arming:** none of the five values, nor their name words, occurred in
+  any earlier raw message, the committed fixture or earlier notes — **no prior byte baseline
+  existed for any of the five**.
+- **Operator confirmation:** all five completed, not in process, not needed for immediate
+  clinical workflow, safe to transmit again.
+- **Declared action:** select exactly these five and initiate the multi-select transmit action
+  **exactly once**; no second click, no individual transmits, no additional selections.
+- **Corpus rule:** messages from this test are **not** counted as corpus messages.
+
+### 19.3 Observed facts
+
+- **Session:** the existing connection `10.0.0.11:49693 → 10.0.0.10:5001` (established
+  15:49:28.531); **no new connection**.
+- **11 051 application bytes**, identical between the listener stream and the pcap reassembly.
+- **Five complete ASTM messages** — each exactly one `H` through one `L`, bare `CR` terminated:
+
+| Msg | Matched record (`O`-4 comp 3, exact) | Bytes | SHA-256 | `R` | Panel | Image paths | `R`-13 | First data frame |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Seq 49 | 1 772 | `229ac0b630317887d57bd01a2d0cef9f8bcca6c8bda771cd5ee30858a57c1085` | 25 | no differential | 3 | 2026-09-16 12:27:29 | 15:54:16.395212 |
+| 2 | Seq 48 | 1 772 | `7dccb7c90c9211ed35245a58308d2c800bf359901472c24f587f3505d10dadbf` | 25 | no differential | 3 | 2026-09-16 12:24:08 | 15:54:16.464375 |
+| 3 | Seq 47 | 2 833 | `034278b047ff9b62ee3802cd9a07ac886582b47a3f3d073406092ccfb130e36f` | 42 | differential | 4 | 2026-09-16 12:01:52 | 15:54:16.598823 |
+| 4 | Seq 46 | 1 761 | `707175c8705d4d9414c084e878d86077854119b3ada0755d385676a0228f55e2` | 25 | no differential | 3 | 2026-09-16 11:46:42 | 15:54:16.662804 |
+| 5 | Seq 45 | 2 913 | `beb52f7b3e7ff51bc862dd15febd119c9c4d0cef14e093a5a00f1597df811b74` | 44 | differential | 4 | 2026-09-16 11:31:23 | 15:54:16.938539 |
+
+- **All five selected records appear exactly once; no unselected record appears.** Nothing
+  further arrived before the listener was stopped at 15:57:56 (> 3 min of quiet after the last
+  data frame at 15:54:16.938540).
+- **Order of arrival:** Seq 49 → 48 → 47 → 46 → 45 — the registered order.
+- **Timing:** whole batch **543.3 ms** from first to last data frame; start-to-start gaps
+  **69.2 / 134.4 / 64.0 / 275.7 ms**.
+- **Strictly sequential, no overlap.** For every message: instrument data (two TCP segments)
+  → LIS TCP ACK → LIS `0x06` → instrument TCP ACK of the `0x06` 42.0–55.5 ms later → next
+  message 16.1–229.0 ms after that TCP ACK.
+- **Listener:** 6 reads (message 3 arrived as two reads), **6 ACKs** per the existing per-read
+  behaviour, **no NAK**. For message 3 the second `0x06` left the host ~46 ms after its read,
+  only after the instrument acknowledged the first — host-side send coalescing, not instrument
+  behaviour.
+- **Fields:** `O`-3 empty in all; `P`-5 populated in all five; `P`-8 populated in messages 3 and 4;
+  `R`-9 = `F`, `R`-11 = `lab`, `R`-6/`R`-8/`R`-12 empty; image-path folder date `20260917` in all;
+  sequence number absent as a field; `H` record identical to every earlier capture.
+- **Structures:** three distinct in the batch, none new to the evidence — messages 1, 2 and 4
+  share the structure of 2026-09-16 message B; message 3 that of 2026-09-16 A and D, Seq 58,
+  CORPUS-D18-01 and the September fixture; message 5 that of CORPUS-D18-02.
+
+### 19.4 Classification and bounded interpretation
+
+**Outcome A — 5 selections → 5 messages.** *"One multi-select action for five explicitly
+selected records produced five observed application messages."*
+
+**Interpretation (one observation):** each explicitly selected record became one distinct,
+complete ASTM message, delivered one at a time over the existing TCP session in about half a
+second, with no unselected record included.
+
+### 19.5 What MULTI-SELECT-01 does not establish
+
+Automatic queue flushing or any send-all behaviour; behaviour for all pending records, larger
+or mixed selections; what determines the arrival order; whether the instrument waits for the
+application ACK between messages (ACK dependence); retry or NAK behaviour; query/pull
+semantics; genuine rerun; any deduplication rule. The five messages add **no** corpus count.
+
+---
+
+## 20. Final Day-18 XN-550 status
+
+### 20.1 Validation matrix
+
+| Area | Status | Basis |
+|---|---|---|
+| Transport role: instrument dials LIS `:5001`; no inbound on 5001 (S7 met) | **VERIFIED** | 2026-09-16 §5; 2026-09-17 dial cycles |
+| ASTM E1394-97 records, bare `CR`, no E1381 framing bytes (this configuration) | **VERIFIED** | All captures |
+| Persistent session, multiple messages per connection | **VERIFIED** | 2026-09-16; run01; Run03; MULTI-SELECT-01 |
+| GT-1: one selected-result transmit → one message | **VERIFIED** | §6.1 (and Run03 8/8) |
+| GT-2: same-day controlled retransmission byte-identical | **VERIFIED** — one controlled pair | §6.2 |
+| GT-3: genuine same-specimen rerun | **UNVERIFIED** — not testable | — |
+| GT-3A: same-patient / different-sequence | **Observation only** — no specimen-identity conclusion | §7 |
+| Day-granularity varying image-path folder date | **VERIFIED** exists; **meaning UNKNOWN** | §8 |
+| RECONNECT-01: LIS-side RST → no reconnect in 5 min 16 s | **Observed** — not proof of inability to reconnect | §9.1 |
+| RECONNECT-02: reconnect after cable interruption | **PARTIALLY VERIFIED** — cause confounded | §9.2–§9.3 |
+| POWER-CYCLE-01: instrument RST on normal shutdown; one SYN and new session after boot; no payload in 20 min 28.5 s | **VERIFIED** — one observation | §17 |
+| Startup BACKGROUNDCHECK | **Instrument screen only** — not LIS evidence | §18.1 |
+| On-screen sequence restarts at 1 after restart | **Operator observation**; trigger CANDIDATE | §18.2 |
+| MULTI-SELECT-01: five selected → five messages, none unselected | **VERIFIED** — one observation | §19 |
+| Reconnect behaviour overall | **PARTIALLY VERIFIED** | §9, §17 |
+| Corpus count ≥ 20 | **MET** — 20 messages / 16 distinct payloads / 10 structures | §16 |
+| Corpus category coverage | **NOT MET** | §16 |
+
+### 20.2 Open items after Day 18
+
+- **UNVERIFIED:** genuine same-specimen rerun; ACK-timeout retry; NAK behaviour; query/pull
+  semantics; queue flush / automatic send-all behaviour.
+- **NOT OBSERVED at the LIS:** QC, calibration, maintenance and startup raw message categories.
+- **UNKNOWN:** semantic meaning of the image-path folder date; cause and meaning of `P`-5 (and
+  `P`-8) population differences; class of the uncontrolled 1 102-byte message; semantics of
+  cross-day resend; exact cause or timer of the observed reconnects; whether background-check
+  records can be transmitted under other output settings.
+- **PARTIALLY VERIFIED:** reconnect behaviour.
+- **Architecture decision still open:** listener mode (S7), and inbound on ports other than 5001.
+
+No production design, parser rule, identity mapping, deduplication key or schema change follows
+from any item in this record.
