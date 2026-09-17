@@ -593,7 +593,7 @@ Extend the Integration Service to handle concurrent connections from all 9 instr
 > - **"One message"** — superseded. The raw corpus is now **20 patient-result messages** (16 distinct payloads, 10 distinct structures). `T-CORPUS-01-03`'s **count criterion is met**; its **category criterion is not** (zero QC, calibration, maintenance or startup captures), so the test is **not satisfied**.
 > - **"Framing unresolved"** — superseded for the tested configuration. Packet captures show **no E1381 framing bytes in the payload** under the configured output; other output settings are untested.
 > - **Transport role** — confirmed: the XN-550 **dials the LIS**, and does not accept inbound connections on port 5001; stop condition **S7 is met**. Listener mode remains an open architecture decision.
-> - Still open: genuine rerun, instrument-initiated disconnect, ACK-timeout retry / NAK, query/pull, send-all, and all non-patient message categories. Reconnect behaviour is only **partially verified**.
+> - Still open: genuine rerun, ACK-timeout retry / NAK, query/pull, send-all, disconnect on abrupt power loss or other causes, and all non-patient message categories. Reconnect after a cable interruption is only **partially verified**; disconnect on a normal shutdown and reconnect after boot were **observed once** (POWER-CYCLE-01), with no application payload in the observed window.
 >
 > **ASTM support remains DEFERRED and M8.3's scope is unchanged.** No parser, configuration entry, transport change or schema change is authorised by this evidence.
 

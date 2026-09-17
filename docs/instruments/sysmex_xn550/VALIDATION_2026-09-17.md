@@ -7,6 +7,9 @@ standing engineering summary is [`README.md`](README.md).
 
 The same day also produced **Run03**, a corpus-expansion run after a break, with a fresh
 capture and listener (§15), and the cumulative corpus status that follows from it (§16).
+It closes with **POWER-CYCLE-01**, a controlled normal instrument restart with the cable
+connected (§17), and the instrument-screen observations made during that restart, kept
+separate because they are not LIS evidence (§18).
 
 Evidence labels are those of `../../09_PHYSICAL_INSTRUMENT_VALIDATION.md` §2, as used
 in the 2026-09-16 record: **VERIFIED · CANDIDATE · UNVERIFIED · UNKNOWN**, plus the
@@ -30,8 +33,8 @@ specimen mapping, deduplication key or schema change follows from anything below
 | Instrument | Sysmex XN-550 (`id_instrument = 3`), `10.0.0.11`, MAC `74:fe:48:a9:dc:34` |
 | LIS host | `10.0.0.10`, MAC `00:e0:4c:14:41:48`, interface `Ethernet` (same USB adapter as 2026-09-16) |
 | TCP port | **5001** |
-| Runs | **run01** 10:02–12:25 (first connection, GT-1, GT-2, GT-3A; RECONNECT-01/02 inside the same capture, listener output in `run02_reconnect/`) · **run03_corpus** 14:20–14:52 (fresh capture, listener and self-test after a break) |
-| Repository | `refactor/orm-architecture` at `c1c41e2` during run01/run02, `af2196b` during run03; **unchanged during every capture phase** |
+| Runs | **run01** 10:02–12:25 (first connection, GT-1, GT-2, GT-3A; RECONNECT-01/02 inside the same capture, listener output in `run02_reconnect/`) · **run03_corpus** 14:20–14:52 (fresh capture, listener and self-test after a break) · **run04_power_cycle** 15:09–15:37 (POWER-CYCLE-01; fresh capture, listener, self-test and link-state logger) |
+| Repository | `refactor/orm-architecture` at `c1c41e2` during run01/run02, `af2196b` during run03, `c69b665` during run04; **unchanged during every capture phase** |
 | Evidence root | `D:\SurveyLIS\evidence\2026-09-17\` — outside the repository |
 | PHI | **All raw payloads, the byte stream, the pcaps carrying payload and the ground-truth notes are PHI-bearing** and stay in the evidence root. No patient name, Sample No. value or other identifier appears in this document |
 | Listener | `D:\SurveyLIS\astm_raw_capture.py`, SHA-256 `4cb47218…aa710ed` (same tool as 2026-09-16); loopback self-test **passed** before use (1 044 bytes, all 256 values, SHA-256 identical) |
@@ -110,6 +113,19 @@ enter the repository.
 The per-message pcap snapshots of Run03 (`run03_corpus/post_corpus_d18_NN_snapshot.pcapng`)
 are listed with their hashes in `run03_corpus_final_hashes.sha256`.
 
+POWER-CYCLE-01 evidence (`run04_power_cycle/`, no application payload, therefore no PHI-bearing
+payload file):
+
+| File | Bytes | SHA-256 | Role |
+|---|---|---|---|
+| `run04_power_cycle/session_2026-09-17_xn550_run04_power_cycle.pcapng` | 10 604 | `934f23d7e74836852e7c4fe4afecd085412b43860d0ca899c7008796c6c4a911` | Capture 15:09:45–15:37:52 (103 frames, 0 TCP payload frames); frames 101–103 are shutdown teardown |
+| `run04_power_cycle/run04_linkstate_log.jsonl` | 4 075 | `896f2896ab66ebf5d66c4f528df32ceb99be05e4e9b3309cb260f86435966e20` | LIS adapter link state, capture processes, port 5001 listen/established (500 ms polling) |
+| `run04_power_cycle/power04_conn01_events.jsonl` | 554 | `0b649cb0b34de2b63aca9135eaa419ea6ff5497107b7ca52a908b289288b1785` | Pre-restart session events (0 bytes; closed by remote reset) |
+| `run04_power_cycle/power04_conn02_events.jsonl` | 115 | `7099008705487c15e645efa2452d249427dcc274773eecda63f7435942c1e30d` | Post-boot session events (0 bytes) |
+| `run04_power_cycle/power_cycle_manifest.jsonl` | 912 | `28e887f9859b88d3b95b972f13b0e296eba99aaedd263dfee3342f8b59bde9e0` | Test header and close record |
+| `run04_power_cycle/power_cycle_analysis_notes.md` | 4 390 | `8d95269c7e7eef74b438e005d66709f762a3856b1320e3407a6c00ba40cc9519` | Facts, operator ground truth, interpretation, limits |
+| `run04_power_cycle/run04_power_cycle_final_hashes.sha256` | 995 | `1f0e504f667ce319778259689e637381ff6c556056a9d887f0b4d0ccb44011ee` | Hash list of all 10 run04 files (includes listener manifest and self-test); re-verified 10/10 |
+
 ---
 
 ## 4. Session chronology
@@ -144,6 +160,15 @@ are listed with their hashes in `run03_corpus_final_hashes.sha256`.
 | 14:23:49.927 | Session `10.0.0.11:49737` established (one SYN) | Operator setup — not reconnect evidence |
 | 14:27:10 – 14:50:47 | **CORPUS-D18-01 … 08**: eight pre-registered single transmits, eight messages (§15) | **Controlled** |
 | 14:52:33 – 14:52:41 | Run03 close: listener then capture stopped; one LIS-side `RST, ACK` on 49737 | Operator shutdown — not evidence |
+| 15:09:29 – 15:10:03 | **run04** setup: self-test passed, link logger and capture started, listener started | Pre-flight |
+| 15:10:49.929 | Session `10.0.0.11:49752` established; idle, 0 bytes | — |
+| 15:11:30 | POWER-CYCLE-01 pre-registered | Controlled — declared |
+| 15:13:31.805 | **Instrument → LIS `RST, ACK`** on 49752 during normal shutdown | **POWER-CYCLE-01** |
+| 15:13:44 – 15:15:33 | LIS adapter link down/up transitions; stable from 15:15:33.25 | POWER-CYCLE-01 |
+| 15:15:31.848 | Instrument reappears on the network (ARP probes and announcements) | POWER-CYCLE-01 |
+| 15:16:32.485 | **One SYN from `10.0.0.11:49671`**; new session established | POWER-CYCLE-01 |
+| 15:16:32 – 15:37:01 | **No application payload** (20 min 28.5 s); instrument screen shows startup and BACKGROUNDCHECK (§18) | Observation |
+| 15:37:44 – 15:37:53 | run04 close: listener then capture stopped; one LIS-side `RST, ACK` on 49671 | Operator shutdown — not evidence |
 
 ---
 
@@ -432,12 +457,18 @@ reconnect remains unknown.
 | Corpus across categories (T-CORPUS-01-03) | **NOT MET** | Patient results only | QC / calibration / maintenance / startup **not observed** |
 | LIS-side RST → no reconnect within 5 min 16 s | **VERIFIED** (observation) | RECONNECT-01 | Not a claim that it cannot reconnect |
 | Reconnect after physical link interruption | **PARTIALLY VERIFIED** | RECONNECT-02 | Cause confounded with RECONNECT-01 |
+| Instrument-initiated disconnect on normal shutdown: instrument → LIS `RST, ACK`, no FIN | **VERIFIED** — one observation | POWER-CYCLE-01, frame 18 | Normal documented shutdown only; abrupt power loss and other causes not observed |
+| Reconnect after normal restart: one SYN, new session, new source port | **VERIFIED** — one observation | POWER-CYCLE-01, frames 71–73 | No reconnect timer or trigger established |
+| Application payload after restart | **No application payload was observed during the defined post-reconnect window** (20 min 28.5 s) | POWER-CYCLE-01 | Not evidence of absent startup resend, queue or flush |
+| Startup / QC raw message category at the LIS | **NOT OBSERVED** | POWER-CYCLE-01: startup BACKGROUNDCHECK visible on the instrument screen only (§18) | Screen observations are not LIS application-layer evidence |
+| On-screen sequence restarts at 1 after a normal restart | **Operator observation** (two restarts) | §18 | Not transmitted; not byte-verifiable; not a specimen identifier |
 | Application payload after reconnect | **UNKNOWN** | 0 bytes in 10 min 7 s | Absence ≠ capability |
 
 ### 11.1 Explicitly UNVERIFIED or NOT OBSERVED after this session (including Run03)
 
 - **Genuine same-specimen rerun** — UNVERIFIED (not testable; GT-3A and Run03 are not reruns).
-- **Instrument-initiated disconnect** behaviour — UNVERIFIED.
+- **Instrument-initiated disconnect** — on a **normal shutdown**, observed once (POWER-CYCLE-01, §17); on abrupt power loss, crash or any other cause — UNVERIFIED.
+- **Reconnect timer / trigger** — UNVERIFIED (reconnect observed after RECONNECT-02 and POWER-CYCLE-01; semantics unproven).
 - **ACK-timeout retry** and **NAK** behaviour — UNVERIFIED.
 - **Query / pull semantics** (LIS-initiated request for results) — UNVERIFIED.
 - **Queue flush / send-all** behaviour — UNVERIFIED.
@@ -449,8 +480,9 @@ reconnect remains unknown.
 
 ## 12. Relation to T-CONN-01-03 and T-CORPUS-01-03
 
-**T-CONN-01-03.** Adds controlled reconnect observations (§9, PARTIALLY VERIFIED) and a
-second session confirming role, endpoint, framing and persistent-session behaviour. The
+**T-CONN-01-03.** Adds controlled reconnect observations (§9, PARTIALLY VERIFIED), one
+observed normal-restart disconnect and reconnect (§17, VERIFIED for that one observation),
+and a second session confirming role, endpoint, framing and persistent-session behaviour. The
 inbound-on-other-ports gap from 2026-09-16 §5.2 is unchanged. **Not marked complete.**
 
 **T-CORPUS-01-03 — target ≥20 raw messages across categories.** The test has two
@@ -613,3 +645,134 @@ payloads by bytes; whether they are the same analysis remains a hypothesis.
 
 **T-CORPUS-01-03:** message-count criterion **MET**; category criterion **NOT MET**;
 test **not satisfied** (§12).
+
+POWER-CYCLE-01 (§17) added **no** messages to the corpus: no application payload reached the
+LIS, and the startup background check was seen on the instrument screen only (§18).
+
+---
+
+## 17. POWER-CYCLE-01 — controlled normal restart, cable connected
+
+### 17.1 Scope and setup
+
+Pre-registered before the operator acted: *"This is a controlled instrument restart
+observation. No patient result will be manually transmitted during the test."* Not a rerun,
+ACK-timeout, NAK, queue-flush/send-all, query/pull or retransmission test. No sample was run, no
+result transmitted, no ACK/NAK intervention, and neither the cable nor the adapter was touched.
+
+| Item | Observed |
+|---|---|
+| Evidence | `run04_power_cycle/` — fresh self-test (passed 15:09:29), capture from 15:09:45, listener from 15:10:03, link-state logger |
+| Pre-shutdown session | `10.0.0.11:49752 → 10.0.0.10:5001`, SYN 15:10:49.929, **idle, 0 payload bytes**; no patient-result transmission in progress |
+| Procedure | The instrument's **normal documented shutdown**, then normal power-on, performed by the operator (menu steps not relayed) |
+
+### 17.2 Timing sources
+
+**Packet and log timestamps (LIS clock) are authoritative** for network events. Operator
+timing was relayed afterwards at minute resolution — shutdown **~15:13**, power-on **~15:14**,
+boot complete **~15:16** — and is used only to correlate phases, not for sub-minute timing.
+
+### 17.3 Observed facts
+
+**Teardown**
+- Frame 18, **15:13:31.805361: `10.0.0.11:49752 → 10.0.0.10:5001 [RST, ACK]`** — initiated by
+  the instrument. **No FIN** from either side; no LIS frame in response.
+- The listener's connection closed with WinError 10054; the listener **stayed available**
+  (LISTENING) throughout.
+- 15:13:36: instrument IGMP leave and an ARP request for `10.0.0.10`.
+
+**Link and network reappearance**
+- LIS adapter link (500 ms polling): down 15:13:44.20, up 15:13:47.18, down 15:14:58.15, up
+  15:14:59.68 (10 Mbps), down 15:15:01.26, up 15:15:02.74, down 15:15:08.56, **up 15:15:33.25
+  (100 Mbps, stable)**. The adapter stayed present throughout — media disconnects, not the
+  2026-09-16 adapter-absence condition.
+- **15:15:31.848**: instrument ARP probes for `10.0.0.11` and a link-local `169.254.78.106`;
+  announcements 15:15:34.85; IGMP, NetBIOS, mDNS and LLMNR ("IPU") to 15:15:41.35.
+- Later non-TCP traffic, not interpreted: SSDP M-SEARCH ×3 (15:17:13–19); ARP requests for
+  `169.254.169.254` ×24 (15:22:40–15:23:18).
+
+**Reconnect**
+- 15:16:32.4847: instrument ARP request for `10.0.0.10`.
+- **15:16:32.485032: exactly one SYN `10.0.0.11:49671 → 10.0.0.10:5001`**; SYN/ACK .485179;
+  ACK .485522. **New TCP session**; no retries.
+- **Source port 49752 → 49671.**
+- Intervals (packet evidence): RST → SYN 3 min 0.68 s; stable link-up → SYN 59.2 s; first
+  instrument ARP probe → SYN 60.6 s.
+
+**Application layer**
+- **No application payload was observed during the defined post-reconnect window.** The
+  pre-registered 10-minute window (15:16:32 → 15:26:38) was extended passively through the
+  instrument's startup background check to **15:37:01 — 20 min 28.5 s in total**. The pcap holds
+  0 TCP payload frames; no listener receive file was created.
+- No patient-result transmission occurred at any point in the test.
+
+**Close:** listener terminated 15:37:44 (one LIS-side `RST, ACK`, frame 101) and capture stopped
+by 15:37:52 — operator shutdown, not evidence. All 10 run04 files hashed and re-verified.
+
+### 17.4 Interpretation — bounded to this one observation
+
+- On a normal documented shutdown, the XN-550 closed its LIS connection **abortively (RST)**
+  rather than with FIN. **VERIFIED for one observation.**
+- After boot it **re-established a new session by itself**, with a single SYN, about a minute
+  after reappearing on the network. **VERIFIED for one observation.** No reconnect timer,
+  retry interval or trigger is established; RECONNECT-02 remains PARTIALLY VERIFIED and is not
+  resolved by this test.
+- **Hypothesis only:** the lower source port after boot is consistent with the operating system
+  re-initialising its ephemeral-port allocation.
+
+### 17.5 What POWER-CYCLE-01 does not establish
+
+That the XN-550 never resends on startup; that it has no queue; that it never flushes pending
+results; ACK dependence; NAK or ACK-timeout behaviour; query/pull semantics; any universal
+reconnect timer; behaviour on abrupt power loss; genuine rerun behaviour; any QC, calibration,
+maintenance or startup message class.
+
+---
+
+## 18. Instrument-screen observations during POWER-CYCLE-01 (not LIS evidence)
+
+These come from photographs of the instrument screen and from operator reports. They are
+**not** application-layer or packet evidence, the photographs are not stored as evidence, and
+**none of them is counted as T-CORPUS-01-03 category evidence**. Times are the instrument
+clock unless stated.
+
+### 18.1 Startup background check — screen only
+
+| Instrument clock | Screen state |
+|---|---|
+| 15:22 | Bottom status bar **"Start up..."** |
+| 15:27 | Status **"BACKGROUNDCHECK"**, with `WB`, `CBC` and `DIFF` indicators beside it |
+| 15:29 | Status `>1` with a "Sampler" control; a **new BACKGROUNDCHECK row** added to the sample list (title counter 5275 → 5276) |
+
+- **No corresponding raw ASTM or other application message reached the LIS** in the observation
+  window (§17.3).
+- The list's column codes for these rows (mode `A`, Output `GH`, empty V and P/N) are **not
+  interpreted**. Whether background-check records can be transmitted under any other output
+  setting is **UNKNOWN**.
+- **Clock observation — hypothesis:** photographs showing instrument time 15:22 and 15:29 were
+  relayed before the LIS clock reached 15:21:16 and 15:26:53 respectively, suggesting the
+  instrument clock runs at least ~2 minutes ahead. No timestamp in this record is corrected.
+
+### 18.2 On-screen sequence numbering — operator observation
+
+- **Operator observation, two restarts:** after a normal restart the instrument's startup
+  BACKGROUNDCHECK record carries **Sequence 1**, and later records continue 2, 3, 4. The
+  operator restarted the instrument a second time after the run04 tooling had been shut down and
+  saw the same; **that second restart was not captured** and has no network evidence.
+- **Operator confirmation:** Seq 66–68 (analysis dated 2026-09-17 03:31–03:56) were night-shift
+  samples; afterwards the instrument was shut down and powered on at the morning shift.
+  Consistent with this, numbering ran 51 → 68 without restarting from 2026-09-16 into the night
+  of 2026-09-17, so **a calendar-day reset is contradicted**.
+- **CANDIDATE:** that the reset is caused by the restart itself rather than by the background-check
+  step — the two coincide in every restart observed.
+- **Unchanged:** the sequence is **absent as a dedicated field in every transmitted ASTM message**
+  and cannot be byte-verified. It is **not** mapped to specimen identity, and — because it restarts
+  — it is not unique over time.
+
+### 18.3 Relation to the Run03 not-armed proposal
+
+The sample list shows, immediately after the Seq 61 entry, a Sample No. consisting of a
+3-character prefix followed by the value that had been relayed for Seq 60. This is **consistent
+with** the §15.2 hypothesis that the relayed value omitted a prefix; it does **not** establish
+that Seq 60 is 2026-09-16 message C (no sequence number is visible in the photograph, and no
+bytes were captured).

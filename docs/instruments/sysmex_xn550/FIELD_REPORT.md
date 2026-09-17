@@ -24,7 +24,8 @@
 > **17 September 2026** ([`VALIDATION_2026-09-17.md`](VALIDATION_2026-09-17.md)) added
 > controlled retransmission, identifier and reconnect evidence, corrected two
 > statements in the 16 September record, and — in a corpus-expansion run (Run03) — brought
-> the raw corpus to 20 messages, all patient results. The single message this report
+> the raw corpus to 20 messages, all patient results; it also recorded one controlled normal
+> instrument restart (POWER-CYCLE-01). The single message this report
 > describes is therefore no longer the whole corpus. Nothing below has been rewritten to
 > match either.
 
