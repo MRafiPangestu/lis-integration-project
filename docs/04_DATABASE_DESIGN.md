@@ -1804,7 +1804,7 @@ Rincian desain dan verifikasi lengkap: `M9.1b_AUDIT_ATTRIBUTION_DESIGN.md`.
 
 # 35. Instrument Sessions & Raw Capture Provenance (XN-550 Phase 1)
 
-**Tujuan.** Menyimpan *raw bytes* yang persis dan provenance transport untuk instrumen mode *listener* (Sysmex XN-550, G1 `raw_only`). Kontrak lengkap: `docs/instruments/sysmex_xn550/M9.2_IMPLEMENTATION_CONTRACT.md` §9 dan §19.4. Ini adalah *technical traceability* (Bagian 16.3) — **bukan** data klinis: tidak ada baris `patients` / `visits` / `orders` / `test_runs` / `results` yang dibuat dari data XN-550.
+**Tujuan.** Menyimpan *raw bytes* yang persis dan provenance transport untuk instrumen mode *listener* (Sysmex XN-550, G1 `raw_only`). Kontrak lengkap: `docs/instruments/sysmex_xn550/M9.2_IMPLEMENTATION_CONTRACT.md` §9, §19.4 dan §19.5. Ini adalah *technical traceability* (Bagian 16.3) — **bukan** data klinis: tidak ada baris `patients` / `visits` / `orders` / `test_runs` / `results` yang dibuat dari data XN-550.
 
 **Migrasi.** `backend/alembic/versions/5d2e8b7c41a9_xn550_phase1_raw_capture.py`, `down_revision = "28aa370f5dbe"`, ditulis manual (alasan sama dengan Bagian 33/34). Aditif saja: satu tabel baru dan 13 kolom *nullable* baru; tanpa *backfill*. Baris lama (BC-5150/MLLP) tetap `NULL` pada kolom baru. *Downgrade* menghapus tepat objek-objek ini dan diuji oleh `backend/tests/test_migration_chain.py`.
 
@@ -1814,4 +1814,13 @@ Rincian desain dan verifikasi lengkap: `M9.1b_AUDIT_ATTRIBUTION_DESIGN.md`.
 
 **Constraint.** Hanya keunikan teknis: `UNIQUE (id_session, stream_offset_start)`, `CHECK (raw_bytes IS NULL OR raw_length = octet_length(raw_bytes))`, `CHECK (raw_bytes IS NULL OR raw_sha256 IS NOT NULL)`. Index non-unik `(id_instrument, raw_sha256)`, `(id_instrument, received_at DESC)`, `(duplicate_of_message_id)`. **Sengaja tidak ada** `UNIQUE` pada `raw_sha256`: retransmisi manual di hari yang sama identik per byte, dan setiap pengiriman tetap disimpan.
 
-**Status Phase 1.** Pesan lengkap disimpan `parse_status = 'Pending'`; `message_class`, `parser_key`, `parser_version` dan `duplicate_of_message_id` tetap `NULL` karena tahap T2 (parser/observasi) belum ada. Fragmen dan pesan dengan byte kontrol/LF/non-ASCII disimpan `Failed` / `UNPARSEABLE` dengan token kontrak.
+**Status Phase 1 dan Phase 2.** T1 menyimpan pesan lengkap dengan `parse_status = 'Pending'`. Fragmen dan pesan dengan byte kontrol/LF/non-ASCII langsung disimpan `Failed` / `UNPARSEABLE` dengan token kontrak; pada baris ini `parser_key` dan `parser_version` tetap `NULL`.
+
+Sejak Phase 2 (`app/integration/xn550_ingestion.py`, tanpa migrasi baru), tahap T2 membaca `raw_bytes` dan memverifikasi ulang `raw_sha256` / `raw_length`. Selama baris masih `Pending`, T2 memperbarui **baris yang sama**:
+- `parse_status`: `Success` / `Failed`;
+- `message_class`: `UNCLASSIFIED` atau `UNPARSEABLE`, tidak pernah `PATIENT_RESULT`;
+- `classification_rule`: `XN550_ENVELOPE_CONFORMANT`, `XN550_DEV_*`, atau token `UNPARSEABLE`;
+- `error_detail`: token, dengan indeks record/field bila ada, tanpa teks field;
+- `parser_key` (`xn550_astm_e1394`) dan `parser_version` (`xn550-astm-1.0.0`).
+
+Baris yang tertinggal `Pending` akibat crash diklasifikasikan saat listener start. `duplicate_of_message_id` tetap `NULL`: penautan byte-identik baru dilakukan oleh tahap T2 G2, yang belum diimplementasikan karena OD-XN-3 masih terbuka.
