@@ -1,6 +1,6 @@
 # Sysmex XN-550 — Engineering Summary
 
-**Status: field-verified reference instrument.** Phase 1 (G1 raw capture: listener transport, message assembly, exact raw persistence) is implemented and **disabled by default**. There is no parser, no result visibility and no clinical integration (§6).
+**Status: field-verified reference instrument.** Phase 1 (G1 raw capture: listener transport, message assembly, exact raw persistence) and Phase 2 (the dedicated XN-550 parser and envelope classification written back to each raw row) are implemented and **disabled by default**. There is no result visibility, no observation persistence and no clinical integration (§6).
 
 This is the developer-facing summary of what the XN-550 has been *observed* to do. The full survey record, including the parts that are superseded, is in [`FIELD_REPORT.md`](FIELD_REPORT.md).
 
@@ -18,7 +18,7 @@ A **third session on 17 September 2026** — see [`VALIDATION_2026-09-17.md`](VA
 
 This establishes the XN-550 as the **second instrument in this project with any field evidence at all** (after the Mindray BC-5150), and it answers the first question `docs/09` §11.3 says must be answered before parser work: *which side initiates the connection?*
 
-**What this does not do:** the evidence itself integrates nothing. At the time of the survey, the observed transport direction was the opposite of what the LIS supported. Phase 1 has since added approved-scope listener mode and raw capture. There is still no XN-550 parser, no deployment configuration entry and no result visibility. See §6.
+**What this does not do:** the evidence itself integrates nothing. At the time of the survey, the observed transport direction was the opposite of what the LIS supported. Phase 1 has since added approved-scope listener mode and raw capture, and Phase 2 the dedicated parser with envelope classification. There is still no deployment configuration entry, no observation persistence and no result visibility. See §6.
 
 ---
 
@@ -59,7 +59,7 @@ This establishes the XN-550 as the **second instrument in this project with any 
 > - **Evidence:** in the tested configuration (ASTM output, TCP port 5001), the XN-550 dials the LIS. When the LIS dialled the instrument's port 5001, its SYNs were **silently dropped** — neither SYN-ACK nor RST ([`VALIDATION_2026-09-16.md`](VALIDATION_2026-09-16.md) §5.1–§5.3; [`VALIDATION_2026-09-17.md`](VALIDATION_2026-09-17.md) §20.1). **Listener mode is therefore a prerequisite for integrating this tested configuration**; stop condition S7 is met.
 > - **Scope:** this is not a claim about every XN-550 port or output configuration. Whether the instrument accepts inbound connections on **any other port is UNKNOWN**; no port scan was performed or is authorised (§7, item 1).
 > - **Evidence vs. approval:** the field evidence establishes the prerequisite. The architecture decision to build listener mode is a separate approval, recorded as **OD-XN-1 (approved)** in [`M9.2_IMPLEMENTATION_CONTRACT.md`](M9.2_IMPLEMENTATION_CONTRACT.md) §0.3.
-> - **Implementation:** listener mode is implemented for **G1 raw capture only**, restricted in code to this approved scope, and **disabled by default** (§6).
+> - **Implementation:** listener mode is implemented for **G1 only** (raw capture plus envelope classification), restricted in code to this approved scope, and **disabled by default** (§6).
 
 ---
 
@@ -153,20 +153,20 @@ This is the XN-550 equivalent of the identity question `docs/09` §10 raises for
 
 ## 6. Current integration boundary
 
-**REPO-CONFIRMED — Phase 1 (G1 raw capture) is implemented and disabled by default. Nothing beyond raw capture is integrated** ([`M9.2_IMPLEMENTATION_CONTRACT.md`](M9.2_IMPLEMENTATION_CONTRACT.md) §19.4):
+**REPO-CONFIRMED — Phase 1 (G1 raw capture) and Phase 2 (parser + envelope classification of raw rows) are implemented and disabled by default. Nothing beyond G1 is integrated** ([`M9.2_IMPLEMENTATION_CONTRACT.md`](M9.2_IMPLEMENTATION_CONTRACT.md) §19.4, §19.5):
 
 | Layer | State |
 |---|---|
-| Parser | **None.** `backend/app/integration/parsers/registry.py` still contains exactly one entry, `bc5150_hl7`; Phase 1 deliberately registers no ASTM key. Resolution is exact-match with no fallback; an unknown `parser_key` raises `ParserNotRegisteredError` at startup |
-| ASTM support | **Message boundaries only.** `app/integration/astm/assembler.py` finds `H`…`L` message boundaries in the byte stream (fragmentation-safe, many messages per session). No field content is parsed anywhere in production code. The HL7 v2.3.1 / MLLP path is unchanged |
+| Parser | **Dedicated XN-550 parser** `xn550_astm_e1394` (`app/integration/parsers/xn550_astm.py`, version `xn550-astm-1.0.0`): pure, strict ASCII, bare-CR records, the §6.4 envelope checks, the §6.5 result shapes. The registry holds exactly `bc5150_hl7` (unchanged) and `xn550_astm_e1394`, each with an explicit protocol family checked at startup. Resolution is exact-match with no fallback; there is no generic ASTM parser |
+| ASTM support | `app/integration/astm/assembler.py` finds `H`…`L` message boundaries in the byte stream (fragmentation-safe, many messages per session); the parser reads field structure for **classification only**. `O`-4 component 3 is returned as a display label, `R`-13 as `analysis_at`, and values, units and flags verbatim. `P`-5/`P`-8 are presence booleans; `P`-9, `O`-3, `O`-4 components 1/2/4 and image paths stay raw-only. The HL7 v2.3.1 / MLLP path is unchanged |
 | Transport | `SUPPORTED_INSTRUMENT_MODES = {"client", "listener"}`. Listener mode (`app/integration/listener.py`) is allowed only for `LISTENER_APPROVED_SCOPES = {("Sysmex XN-550", 5001)}` (OD-XN-1). It requires a peer IP allowlist, keeps one session per instrument (a new connection supersedes the old one), never closes idle sessions, and writes nothing but one `0x06` per read. There is no NAK path. The MLLP client is unchanged |
-| Configuration | **No XN-550 entry** in `instruments.example.json` or the deployment configuration. A listener entry defaults to `enabled: false` (G0), must use `ingestion_stage: "raw_only"` and `ack_policy: "ack_per_read_on_receive"`, and must omit `parser_key` and `classification_policy` |
-| Persistence | T1 only (`app/integration/raw_capture.py`): one `instrument_sessions` row per connection, and one `instrument_messages` row per complete message or fragment with exact `raw_bytes`, `raw_sha256` and stream offsets. Complete messages stay `Pending` (no T2); fragments and control/LF/non-ASCII bytes are recorded as `UNPARSEABLE` with their token |
-| Classification | Policies are BC-5150-specific; no XN-550 policy exists. Nothing is ever promoted to `PATIENT_RESULT` |
+| Configuration | **No XN-550 entry** in `instruments.example.json` or the deployment configuration. A listener entry defaults to `enabled: false` (G0), must use `ingestion_stage: "raw_only"`, `ack_policy: "ack_per_read_on_receive"`, `parser_key: "xn550_astm_e1394"` and `classification_policy: "xn550_observed_envelope"` |
+| Persistence | T1 (`app/integration/raw_capture.py`): one `instrument_sessions` row per connection, and one `instrument_messages` row per complete message or fragment with exact `raw_bytes`, `raw_sha256` and stream offsets. T2 (`app/integration/xn550_ingestion.py`) updates **only that raw row**: it re-verifies the hash, parses `raw_bytes`, and writes `parse_status`, `message_class`, `classification_rule`, `error_detail` (token only), `parser_key` and `parser_version`. Rows left `Pending` by a crash are classified at listener start. No observation rows, no duplicate linking, no migration in Phase 2 |
+| Classification | `xn550_observed_envelope`: conformant → `UNCLASSIFIED` / `XN550_ENVELOPE_CONFORMANT`; structural deviation → `UNCLASSIFIED` / `XN550_DEV_*`; unparseable → `UNPARSEABLE` / `XN550_*`. A hard guard makes `PATIENT_RESULT` impossible for XN-550. BC-5150 policies are unchanged |
 | Database | Migration `5d2e8b7c41a9` adds `instrument_sessions` plus nullable raw-capture provenance columns on `instrument_messages` (`docs/04` §35). No clinical table changed; XN-550 data creates no Patient / Visit / Order / TestRun / Result rows |
 | Results API / frontend | **None.** G2 observations are not implemented (OD-XN-3 open) |
 
-**The original evidence import added documentation and one test fixture only.** Phase 1 adds the raw-capture foundation described above. With no enabled listener entry it changes no runtime behaviour.
+**The original evidence import added documentation and one test fixture only.** Phases 1 and 2 add the raw-capture and classification foundation described above. With no enabled listener entry they change no runtime behaviour.
 
 > Related repository artefact, for the avoidance of doubt: `docs/09` §4.2 warns that `backend/mesin_simulator.py` emits ASTM-style records labelled `Sysmex_XN-550` and **must never be cited as evidence**. That warning stands. This document — not that script — is the XN-550 evidence record. The two happen to agree that the XN-550 speaks ASTM, which is a coincidence rather than corroboration.
 
@@ -194,7 +194,7 @@ In the order they should be answered. Items 1 and 2 are the ones that can invali
 
 A test-only contract pins what the capture structurally **is**, so that a future parser is written against observed evidence rather than against the survey report's prose.
 
-**`backend/tests/test_xn550_astm_contract.py`** — 16 tests, DB-free and analyzer-free, reading only the committed fixture. It imports no ASTM production code, because none exists.
+**`backend/tests/test_xn550_astm_contract.py`** — 16 tests, DB-free and analyzer-free, reading only the committed fixture. It stays the evidence contract and exercises no parsing code; only its registry guard imports production code. The Phase 2 parser is tested against the same fixture in `backend/tests/test_xn550_parser.py`.
 
 ### 8.1 What the contract proves
 
@@ -211,7 +211,7 @@ A test-only contract pins what the capture structurally **is**, so that a future
 | Uniform fields | Every result is final (`F`), same operator id (`lab`), one shared run timestamp parseable as `%Y%m%d%H%M%S` |
 | Reference ranges | `R`-5 is empty on **every** result — the instrument supplied none |
 | Result shapes | 28 measured · 10 interpretive flags · 4 graphic references — a parser assuming "R record = numeric measurement" mishandles 14 of 42 |
-| Fail-closed guard | The registry still holds only `bc5150_hl7`; `xn550_astm`, `sysmex_xn550` and `astm_generic` all raise `ParserNotRegisteredError` |
+| Fail-closed guard | The registry holds exactly `bc5150_hl7` and the dedicated `xn550_astm_e1394` (updated deliberately in Phase 2); `xn550_astm`, `sysmex_xn550` and `astm_generic` all raise `ParserNotRegisteredError` |
 
 The contract was mutation-checked: converting one `C` record to an `R` record fails 12 tests, and reintroducing PHI fails 2.
 
@@ -223,11 +223,13 @@ The contract was mutation-checked: converting one `C` record to an `R` record fa
 
 **Deliberately not asserted anywhere:** that `P`-5 is an MRN · that `O`-3 or `O`-4 is a specimen id or barcode · any Patient / Visit / Order mapping · any deduplication or retransmission identity · any QC, calibration or maintenance classification · any wire-level ASTM E1381 framing behaviour. Semantic patient and specimen mapping is **deferred** until a corpus with known ground truth exists (§5.1, §7).
 
-### 8.3 Why no production parser was written
+### 8.3 Why no production parser was written (historical — resolved by Phase 2)
 
 `ParserFn` is typed `Callable[[str], Optional[ParsedHL7]]`, and `ParsedHL7` requires `ParsedPatient.nomor_rm`, `ParsedPatient.nama_lengkap` and `ParsedOrder.specimen_no`. **Populating those from this message would require asserting exactly the identity semantics §5.1 records as UNKNOWN.** Writing one today would therefore encode a guess into production code, and registering it would additionally need a `parser_key` and a configuration entry.
 
 The smallest honest next step is evidence, not code.
+
+> **Update (Phase 2).** After the Day-18 corpus and the implementation contract, a parser was written **without** `ParsedHL7`. It returns its own result types, which carry no patient or specimen identity (`app/integration/parsers/xn550_astm.py`; contract §19.5). The reasoning above still holds: no identity is asserted, and nothing is promoted to the clinical path.
 
 ### 8.4 Open extension point — `C` records
 
@@ -250,6 +252,9 @@ All three `C` records in this capture are `C|1||`: structurally present, **paylo
 | [`../../../backend/app/integration/raw_capture.py`](../../../backend/app/integration/raw_capture.py) | Phase 1 T1 raw-capture store (contract §9.3) |
 | [`../../../backend/alembic/versions/5d2e8b7c41a9_xn550_phase1_raw_capture.py`](../../../backend/alembic/versions/5d2e8b7c41a9_xn550_phase1_raw_capture.py) | Phase 1 migration (contract §9.1, §9.2) |
 | `backend/tests/test_xn550_assembler.py`, `test_xn550_listener.py`, `test_xn550_listener_config.py`, `test_xn550_raw_capture_db.py` | Phase 1 tests: assembler (DB-free), loopback listener (DB-free), configuration and wiring (DB-free), T1 persistence plus end-to-end (`lis_marina_permata_test`) |
+| [`../../../backend/app/integration/parsers/xn550_astm.py`](../../../backend/app/integration/parsers/xn550_astm.py) | Phase 2 pure parser and `xn550_observed_envelope` policy (contract §6, §7, §19.1) |
+| [`../../../backend/app/integration/xn550_ingestion.py`](../../../backend/app/integration/xn550_ingestion.py) | Phase 2 T2 classification stage for persisted raw rows (contract §10.4, §19.5) |
+| `backend/tests/test_xn550_parser.py`, `test_xn550_classification_db.py`, `test_xn550_external_corpus_optin.py` | Phase 2 tests: parser and policy (DB-free), T2 classification plus end-to-end (`lis_marina_permata_test`), and a local opt-in aggregate check against the external evidence (skipped unless `XN550_EVIDENCE_ROOT` is set) |
 | [`../../../backend/tests/fixtures/instruments/sysmex_xn550/patient_result_001.astm`](../../../backend/tests/fixtures/instruments/sysmex_xn550/patient_result_001.astm) | Redacted raw ASTM patient-result message, 2 824 bytes, 49 records |
 | [`../../../backend/tests/test_xn550_astm_contract.py`](../../../backend/tests/test_xn550_astm_contract.py) | Fixture contract — 16 tests, DB-free, no production code exercised (§8) |
 

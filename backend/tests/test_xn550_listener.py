@@ -539,6 +539,8 @@ def test_build_listener_worker_uses_the_validated_config():
         host="10.0.0.10",
         port=5001,
         mode="listener",
+        parser_key="xn550_astm_e1394",
+        classification_policy="xn550_observed_envelope",
         allowed_peers=["10.0.0.11"],
         ack_policy="ack_per_read_on_receive",
         ingestion_stage="raw_only",

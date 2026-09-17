@@ -16,7 +16,8 @@ for G1 ``raw_only``:
   field-verified behaviour). ``0x06`` is the only byte this module can write;
   there is no NAK, no command and no ACK withholding as a protocol signal;
 * every complete message / fragment is committed through the T1 store before
-  the (Phase 1: no-op) hand-off.
+  the post-commit hand-off (in service wiring: the XN-550 T2 classification
+  stage, which only updates that raw row). The hand-off can never end a session.
 
 It is independent of the HL7/MLLP ``InstrumentClient`` and never imports the
 parser registry, the HL7 repository or the clinical models. Logs carry no
@@ -116,7 +117,13 @@ def write_outbound(sock: socket.socket, payload: bytes) -> None:
 
 
 def raw_only_noop(id_message: int) -> None:
-    """G1 ``raw_only`` hand-off after T1: deliberately does nothing (contract §19.4)."""
+    """Default hand-off after T1: does nothing. In service wiring the XN-550
+    classification stage is injected instead (contract §19.5)."""
+    return None
+
+
+def serve_start_noop() -> None:
+    """Default start hook: does nothing."""
     return None
 
 
@@ -283,7 +290,13 @@ class SessionHandler:
                 self._warn_once(event.byte_class_token)
             else:
                 self._send_acks(self._ack.after_raw_commit())
-                self._on_raw_committed(id_message)
+                try:
+                    self._on_raw_committed(id_message)
+                except Exception as exc:  # post-T1 processing must never end a session (§14 MS-1)
+                    log.error(
+                        "instrument %s session %s: post-commit hook failed for message %s (%s)",
+                        self._key, self.id_session, id_message, type(exc).__name__,
+                    )
         return True
 
     def _warn_once(self, token: str) -> None:
@@ -358,6 +371,7 @@ class ListenerTransport:
         clock: Callable[[], datetime.datetime] = datetime.datetime.now,
         sleep: Callable[[float], None] = time.sleep,
         on_raw_committed: RawCommittedHook = raw_only_noop,
+        on_serve_start: Callable[[], None] = serve_start_noop,
     ) -> None:
         self._id_instrument = id_instrument
         self._key = instrument_key
@@ -372,6 +386,7 @@ class ListenerTransport:
         self._clock = clock
         self._sleep = sleep
         self._on_raw_committed = on_raw_committed
+        self._on_serve_start = on_serve_start
 
         self._stop = threading.Event()
         self._lock = threading.Lock()
@@ -415,6 +430,12 @@ class ListenerTransport:
             except Exception as exc:
                 log.error("instrument %s: orphan-session recovery failed (%s)", self._key, type(exc).__name__)
                 self._enter_degraded()
+
+            # e.g. classify raw messages left Pending by a crash between T1 and T2
+            try:
+                self._on_serve_start()
+            except Exception as exc:
+                log.error("instrument %s: start hook failed (%s)", self._key, type(exc).__name__)
 
             while not self._stop.is_set():
                 # Reaping may enter degraded mode (and close the listening
@@ -630,6 +651,8 @@ def build_listener_worker(
     *,
     store: RawCaptureStore,
     status_writer: StatusWriter,
+    on_raw_committed: RawCommittedHook = raw_only_noop,
+    on_serve_start: Callable[[], None] = serve_start_noop,
 ) -> "tuple[ListenerTransport, threading.Thread]":
     """(client, unstarted thread) pair for the Supervisor, from a validated listener config."""
     config = runtime.config
@@ -644,6 +667,8 @@ def build_listener_worker(
         ack_policy=config.ack_policy,
         store=store,
         status_writer=status_writer,
+        on_raw_committed=on_raw_committed,
+        on_serve_start=on_serve_start,
     )
     thread = threading.Thread(target=transport.serve_forever, name=f"instrument-{config.key}")
     return transport, thread

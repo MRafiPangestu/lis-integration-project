@@ -30,8 +30,16 @@ LISTENER_APPROVED_SCOPES = frozenset({("Sysmex XN-550", 5001)})
 LISTENER_ACK_POLICIES = frozenset({"ack_per_read_on_receive"})
 
 # Listener ingestion stages implemented in this phase (contract §19.3). Only
-# G1 `raw_only`; `observations` (G2) is not implemented and OD-XN-3 is open.
+# G1 `raw_only` (raw capture + envelope classification); `observations` (G2) is
+# not implemented and OD-XN-3 is open.
 LISTENER_INGESTION_STAGES = frozenset({"raw_only"})
+
+# Parser keys and classification policies a listener-mode instrument may name
+# (contract §4.2, §19.1). Only the dedicated XN-550 parser exists; there is no
+# generic ASTM parser. Startup additionally checks the key's registered protocol
+# family (run_integration).
+LISTENER_PARSER_KEYS = frozenset({"xn550_astm_e1394"})
+LISTENER_CLASSIFICATION_POLICIES = frozenset({"xn550_observed_envelope"})
 
 # Fields that only have meaning for a listener-mode instrument.
 _LISTENER_ONLY_FIELDS = ("allowed_peers", "ack_policy", "ingestion_stage")
@@ -67,9 +75,8 @@ class InstrumentConfig(BaseModel):
     host: str
     port: int
     mode: str = "client"
-    # Required (and non-null) in client mode. In listener mode it may be
-    # omitted and must be null: no ASTM parser is registered in XN-550 Phase 1
-    # (G1 raw capture), so there is nothing to resolve (contract §19.4).
+    # Required (and non-null) in both modes. Listener mode accepts only
+    # LISTENER_PARSER_KEYS (contract §19.5); client mode must not name them.
     parser_key: Optional[str]
     # Required (and non-null) in client mode, where it builds `no_registrasi`.
     # Optional in listener mode, and never used by any listener code path
@@ -79,7 +86,8 @@ class InstrumentConfig(BaseModel):
     # M8.2: name of the message-classification policy for this instrument.
     # Omitted -> the strict default (UNCLASSIFIED). Resolved in
     # app.integration.classification; unknown names fall back to strict.
-    # Must be omitted in listener mode (no XN-550 policy exists in Phase 1).
+    # Listener mode requires one of LISTENER_CLASSIFICATION_POLICIES (exact; no
+    # strict fallback for listener instruments).
     classification_policy: Optional[str] = None
     # Listener mode only (contract §4.2). Exact peer IP allowlist.
     allowed_peers: Optional[List[str]] = None
@@ -103,9 +111,11 @@ class InstrumentConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _listener_fields_may_be_omitted(cls, data):
-        """In listener mode `parser_key` and `identity_prefix` may be omitted.
+        """In listener mode `identity_prefix` may be omitted, and an omitted
+        `parser_key` is reported by the listener rules below rather than as a
+        bare "Field required".
 
-        They stay required keys in client mode, so a client config that omits
+        Both stay required keys in client mode, so a client config that omits
         them keeps failing with pydantic's own "Field required" errors.
         """
         if isinstance(data, dict) and data.get("mode") == "listener":
@@ -127,6 +137,11 @@ class InstrumentConfig(BaseModel):
         present = [f for f in _LISTENER_ONLY_FIELDS if getattr(self, f) is not None]
         if present:
             raise ValueError(f"{present} are listener-mode fields and must be omitted in client mode")
+        if self.parser_key in LISTENER_PARSER_KEYS:
+            raise ValueError(
+                f"parser_key {self.parser_key!r} is a listener-mode (ASTM) parser and "
+                "cannot be used in client mode"
+            )
         return self
 
     def _validate_listener(self) -> "InstrumentConfig":
@@ -164,15 +179,15 @@ class InstrumentConfig(BaseModel):
                 f"Implemented: {sorted(LISTENER_INGESTION_STAGES)} (G1 raw capture). "
                 "'observations' (G2) is not implemented; OD-XN-3 is open."
             )
-        if self.parser_key is not None:
+        if self.parser_key not in LISTENER_PARSER_KEYS:
             raise ValueError(
-                "listener mode must omit parser_key: no ASTM parser is registered "
-                "in XN-550 Phase 1 (G1 raw capture only)"
+                f"listener parser_key {self.parser_key!r} is not available. Required: "
+                f"one of {sorted(LISTENER_PARSER_KEYS)} (no generic ASTM parser, no fallback)."
             )
-        if self.classification_policy is not None:
+        if self.classification_policy not in LISTENER_CLASSIFICATION_POLICIES:
             raise ValueError(
-                "listener mode must omit classification_policy: no XN-550 "
-                "classification policy exists in Phase 1"
+                f"listener classification_policy {self.classification_policy!r} is not "
+                f"available. Required: one of {sorted(LISTENER_CLASSIFICATION_POLICIES)}."
             )
         return self
 

@@ -50,9 +50,11 @@ def test_no_fuzzy_or_case_insensitive_matching(bad_key):
 
 # R5 -----------------------------------------------------------------
 
-def test_known_parser_keys_is_exactly_bc5150():
-    assert KNOWN_PARSER_KEYS == frozenset({"bc5150_hl7"})
-    assert set(_PARSERS) == {"bc5150_hl7"}
+def test_known_parser_keys_is_exactly_bc5150_and_the_dedicated_xn550_parser():
+    # XN-550 Phase 2 added exactly one key (contract §19.1); BC-5150 is unchanged.
+    assert KNOWN_PARSER_KEYS == frozenset({"bc5150_hl7", "xn550_astm_e1394"})
+    assert set(_PARSERS) == {"bc5150_hl7", "xn550_astm_e1394"}
+    assert _PARSERS["bc5150_hl7"] is parse_hl7_bc5150
 
 
 # R6 -----------------------------------------------------------------
@@ -72,7 +74,7 @@ def test_registry_dict_is_not_mutated_by_resolution():
         with pytest.raises(ParserNotRegisteredError):
             resolve_parser(key)
     assert _PARSERS == snapshot
-    assert set(_PARSERS) == {"bc5150_hl7"}
+    assert set(_PARSERS) == {"bc5150_hl7", "xn550_astm_e1394"}
 
 
 # R8 -----------------------------------------------------------------

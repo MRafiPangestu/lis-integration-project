@@ -5,12 +5,14 @@ that a future XN-550 parser is written against observed evidence rather than
 against the survey report's prose. It is deliberately a *contract*, not a
 parser:
 
-* **No production code is imported or exercised.** There is no ASTM parser in
-  ``backend/app`` and this module does not create one. ``ParserFn`` is typed
-  ``Callable[[str], Optional[ParsedHL7]]`` and ``ParsedHL7`` requires
-  ``nomor_rm`` / ``nama_lengkap`` / ``specimen_no`` — populating those from this
-  message would mean *asserting* patient and specimen semantics that
-  ``docs/instruments/sysmex_xn550/README.md`` §5.1 records as **UNKNOWN**.
+* **No production parsing code is exercised here.** This module stays the
+  evidence contract; the dedicated XN-550 parser (``app/integration/parsers/
+  xn550_astm.py``, XN-550 Phase 2) is tested against it separately in
+  ``tests/test_xn550_parser.py``. It deliberately does not reuse ``ParsedHL7``,
+  which requires ``nomor_rm`` / ``nama_lengkap`` / ``specimen_no`` — populating
+  those from this message would mean *asserting* patient and specimen semantics
+  that ``docs/instruments/sysmex_xn550/README.md`` §5.1 records as **UNKNOWN**.
+  Only the registry guard at the end of this module imports production code.
 * **Only evidence-backed structure is asserted.** Record counts, ordering,
   delimiters, and the ASTM E1394-97 ``R``-record field layout are observable in
   the capture. Field *meaning* beyond that is not, and is left unasserted on
@@ -345,17 +347,19 @@ def test_contract_does_not_assert_unverified_semantics():
     assert order[2] == "", "O-3 (specimen id) is empty in this capture"
 
 
-def test_no_astm_parser_is_registered_in_production():
-    """The companion to the above: this contract must not be mistaken for
-    XN-550 support. The parser registry still holds exactly one entry, and any
-    ASTM key fails loudly (``docs/09`` §5.2 — fail-closed, no fallback)."""
+def test_only_the_dedicated_xn550_astm_parser_is_registered():
+    """Registry guard (updated deliberately in XN-550 Phase 2, contract §19.1).
+
+    The registry holds exactly ``bc5150_hl7`` and the dedicated
+    ``xn550_astm_e1394`` parser — no generic ASTM parser. Every other ASTM-looking
+    key still fails loudly (``docs/09`` §5.2 — fail-closed, no fallback)."""
     from app.integration.parsers.registry import (
         KNOWN_PARSER_KEYS,
         ParserNotRegisteredError,
         resolve_parser,
     )
 
-    assert KNOWN_PARSER_KEYS == frozenset({"bc5150_hl7"})
+    assert KNOWN_PARSER_KEYS == frozenset({"bc5150_hl7", "xn550_astm_e1394"})
     for key in ("xn550_astm", "sysmex_xn550", "astm_generic"):
         with pytest.raises(ParserNotRegisteredError):
             resolve_parser(key)
