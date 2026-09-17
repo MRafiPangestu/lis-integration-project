@@ -8,6 +8,22 @@ Evidence labels are those defined in `../../09_PHYSICAL_INSTRUMENT_VALIDATION.md
 and are used here without extension: **VERIFIED · CANDIDATE · UNVERIFIED · UNKNOWN**.
 Capture, repetition and redaction rules are §12 of that document and are not restated here.
 
+> **Corrections (reconciled with the 2026-09-17 session, [`VALIDATION_2026-09-17.md`](VALIDATION_2026-09-17.md)).**
+> This record is otherwise left as written on 2026-09-16. Three statements were wrong
+> and are corrected in place, each marked *Corrected*:
+>
+> 1. **"No transmission-varying field whatsoever"** (§13, §16, §20) — incorrect. There
+>    is no *dedicated* control id, sequence or transmission-timestamp field, and a
+>    same-day controlled retransmission was byte-identical; but a cross-day comparison
+>    found a 4-byte difference in an image-path folder date (2026-09-17 record §8).
+> 2. **"`H`-3 … `H`-12 empty"** (§8.1, §15) — incorrect. `H`-3 (message control id) is
+>    empty, but `H`-5 (sender / instrument information) is populated.
+> 3. **`R`-field numbering in §7.2** — counted from the field after the record type,
+>    one lower than the ASTM numbering used in §8 and §9. Restated in ASTM numbering.
+>
+> Status rows for retransmission and reconnect (§16) reflect this session only; see the
+> 2026-09-17 record for later evidence.
+
 ---
 
 ## 1. Session metadata
@@ -199,6 +215,10 @@ disappearing beneath an open socket, **not** an observation of instrument behavi
 No controlled disconnect/reconnect experiment was performed. Buffering across an
 outage, resend-on-reconnect and idle-socket timeout all remain **UNVERIFIED**.
 
+*Later evidence:* controlled RECONNECT-01 (LIS-side RST) and RECONNECT-02 (physical
+cable interruption) were performed on 2026-09-17 — status **PARTIALLY VERIFIED**, cause
+confounded. See [`VALIDATION_2026-09-17.md`](VALIDATION_2026-09-17.md) §9.
+
 ---
 
 ## 6. Wire and application framing
@@ -276,11 +296,15 @@ not be treated as a patient-result exemplar without further evidence.
 
 ### 7.2 `R` record shape
 
-In message D: all 42 `R` records carry a uniform 13 fields; `R`-1 runs 1…42
-contiguously; `R`-8 (status) is `F` for every record; `R`-10 is a constant operator
-string. `R`-5 (reference range) is empty on every result — consistent with the
+In message D: all 42 `R` records carry a uniform 13 fields; `R`-2 (sequence) runs 1…42
+contiguously; `R`-9 (status) is `F` for every record; `R`-11 is a constant operator
+string. `R`-6 (reference range) is empty on every result — consistent with the
 September fixture. A future parser must not fabricate a reference range for this
 instrument.
+
+*Corrected (2026-09-17):* field numbers in this subsection are ASTM 1-based, with `R`-1
+the record type, consistent with §8 and §9. As first written they were one lower
+(sequence `R`-1, status `R`-8, operator `R`-10, reference range `R`-5).
 
 ---
 
@@ -289,15 +313,21 @@ instrument.
 Field numbering below is **ASTM 1-based**, consistent with
 [`README.md`](README.md) §5.1 and [`FIELD_REPORT.md`](FIELD_REPORT.md) §3.2.
 
-### 8.1 No transmission or message control identifier — VERIFIED
+### 8.1 No dedicated transmission or message control identifier field — VERIFIED
 
-`H`-3 through `H`-12 are **empty in every message observed**: the four run03
-messages, the uncontrolled message, and the September fixture — **seven independent
-messages**. Only `H`-1, `H`-2, `H`-5 (instrument identification) and `H`-13 (version)
-carry values.
+`H`-3 (message control id) is **empty in every message observed**: the four run03
+messages, the uncontrolled message, and the September fixture. `H`-5 (sender /
+instrument identification: model and serial) is **populated**, as are `H`-1, `H`-2 and
+`H`-13 (version); `H`-4 and `H`-6 through `H`-12 are empty. The `H` record is
+byte-identical across these messages.
 
 The instrument transmits **no message control id, no transmission id and no sample
-sequence number**. There is no MSH-10 analogue.
+sequence number** as a field. There is no MSH-10 analogue.
+
+*Corrected (2026-09-17):* this subsection first stated that `H`-3 through `H`-12 were
+all empty, which contradicted its own note that `H`-5 carries values. The absence of a
+dedicated identifier field does **not** mean that nothing in the message varies between
+transmissions — see §13.
 
 ### 8.2 `O`-3 empty; `O`-4 carries the operator-entered Sample No. — VERIFIED
 
@@ -415,6 +445,10 @@ produces exactly one message, the four deliveries of A were **four distinct deli
 events**, not one action amplified by the instrument into four. What triggered each
 of those four remains unknown.
 
+*Later evidence (2026-09-17):* a declared manual retransmission on the same day was
+byte-identical to its first transmission, so repeated manual resends are *consistent*
+with message A's bytes. That does not establish the cause of A's deliveries.
+
 Inter-arrival gaps were 28.1 s, 20.5 s and 70.9 s, with B and C following 3.7 s apart
 — recorded as fact, interpreted as nothing.
 
@@ -480,11 +514,22 @@ this document; all such values remain in the evidence root only.*
 
 ### Observed
 
-- The message format contains **no transmission-varying field whatsoever** (§8.1,
-  §8.5, §9.2). An exact resend is therefore byte-identical, which is precisely what
-  message A demonstrated four times over.
+- The message has **no dedicated transmission-varying field** — no message control
+  id, no sample sequence number, no per-transmission timestamp field (§8.1, §8.5,
+  §9.2). Message A was received four times byte-identically on this day.
 - `R`-13 is fixed at analysis time and does not change when a result is re-sent.
-- No message control id, no sample sequence number, no per-transmission timestamp.
+
+*Corrected (2026-09-17):* this section first stated that the message format contains
+"no transmission-varying field whatsoever" and that an exact resend is therefore
+byte-identical. That generalisation is **incorrect**:
+
+- a **same-day** controlled retransmission (2026-09-17 GT-1 → GT-2) was byte-identical;
+- a **cross-day** comparison (2026-09-17 Seq 58 against message A above) differs in
+  exactly **4 bytes** — the folder-date component of the four image-path `R`-4 values;
+- the **semantic meaning of that date is UNKNOWN**, and whether message A and Seq 58
+  are the same analysis is a **hypothesis**, not an established fact.
+
+See [`VALIDATION_2026-09-17.md`](VALIDATION_2026-09-17.md) §6.2 and §8.
 
 ### Not observed
 
@@ -541,7 +586,8 @@ and M9.3b is unaffected (§2.1).
 | No E1381 framing bytes in observed payloads | **VERIFIED** | Byte census per read | **This ASTM configuration only — not "never"** |
 | TCP segmentation independent of message boundaries | **VERIFIED** | run03 pcap vs rx events | — |
 | Instrument's native E1381 handshake semantics | **UNVERIFIED** | — | Our ACK is application-level (§6.3) |
-| `H`-3 … `H`-12 empty; no control id | **VERIFIED** | 7 independent messages | — |
+| `H`-3 (control id) empty; `H`-5 (sender) populated; no control id | **VERIFIED** | All messages observed | *Corrected 2026-09-17* — first written as "`H`-3 … `H`-12 empty" |
+| No dedicated transmission-varying field | **VERIFIED** | §8.1, §8.5, §9.2 | *Corrected 2026-09-17* — a cross-day 4-byte image-path folder-date difference exists; see §13 |
 | `O`-3 empty in all messages | **VERIFIED** | 7 independent messages | — |
 | On-screen Sample No. → `O`-4 component 3 | **VERIFIED** | GT-2 pre-registered match | This instrument/configuration |
 | Lab enters a personal name as Sample No. | **CANDIDATE** | Operator report + 2 sessions | One lab, one operator; §12.2 needs more |
@@ -570,7 +616,7 @@ and M9.3b is unaffected (§2.1).
 | 2 | Normal transmission + framing | **Substantially complete** | 7 messages; record grammar; no E1381 bytes; segmentation behaviour | Other output configurations; corpus size |
 | 3 | Identifier + timestamp behaviour | **Substantially complete** | No control id; `O`-3 empty; `O`-4 mapping VERIFIED; `R`-13 = analysis time | Semantics of `P`-5, `O`-3, trailing `O`-4 component; multi-day counters |
 | 4 | Multiple messages / session | **Complete for this session** | 7 messages, one 41-minute session, no reconnect | Idle-timeout limits; connection limits; ordering guarantees |
-| 5 | Retransmission behaviour | **Partial** | 4× byte-identical deliveries of A; no transmission-varying field | **Cause undetermined**; no declared retransmission action |
+| 5 | Retransmission behaviour | **Partial** | 4× byte-identical deliveries of A; no dedicated transmission-varying field *(corrected 2026-09-17 — see §13)* | **Cause undetermined**; no declared retransmission action |
 | 6 | Genuine rerun | **NOT STARTED** | None | Requires a specimen re-run with declared ground truth |
 | 7 | Disconnect / reconnect | **NOT VALIDLY TESTED** | Cable-induced events only | Controlled instrument-side disconnect needed |
 | 8 | ACK / retry behaviour | **Baseline only** | ACK-on-receive accepted; latencies recorded | Timeout, NAK, withheld-ACK — all require authorisation |
@@ -578,6 +624,11 @@ and M9.3b is unaffected (§2.1).
 
 **No task is marked complete.** Tasks 1–4 are substantially advanced within the
 tested configuration; 5 is partial; 6, 7, 9 are outstanding; 8 has a baseline only.
+
+*Status as of 2026-09-16.* The 2026-09-17 session added a controlled same-day
+retransmission (task 5) and controlled reconnect observations (task 7, PARTIALLY
+VERIFIED); task 6 (genuine rerun) and task 9 remain outstanding. See
+[`VALIDATION_2026-09-17.md`](VALIDATION_2026-09-17.md) §11.
 
 ---
 
@@ -659,8 +710,10 @@ This session established, with byte evidence, that the XN-550 **initiates** its
 connection to the LIS and does not answer inbound TCP on the configured port; that it
 maintains a single long-lived session carrying many messages; that its output in this
 configuration is ASTM E1394-97 records terminated by bare `CR` with **no E1381
-framing bytes present in the payload**; and that the message carries **no
-transmission identifier, no sample sequence number and no transmission timestamp**.
+framing bytes present in the payload**; and that the message carries **no dedicated
+transmission identifier, sample sequence number or transmission timestamp field**.
+*(Corrected 2026-09-17: a cross-day comparison later showed a 4-byte image-path
+folder-date difference — see §13.)*
 
 The session's strongest single result is the **GT-2 controlled observation**: a
 pre-registered transmit of one selected result produced exactly one message, and the

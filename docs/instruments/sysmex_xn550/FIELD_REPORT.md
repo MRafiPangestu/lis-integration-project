@@ -20,8 +20,11 @@
 > questions it leaves open — the transport role, the presence of ASTM 1381-95
 > framing, and the meaning of `O`-4 — were addressed on **16 September 2026**; see
 > [`VALIDATION_2026-09-16.md`](VALIDATION_2026-09-16.md), which supersedes this
-> document wherever the two speak to the same question. Nothing below has been
-> rewritten to match it.
+> document wherever the two speak to the same question. A **third session** on
+> **17 September 2026** ([`VALIDATION_2026-09-17.md`](VALIDATION_2026-09-17.md)) added
+> controlled retransmission, identifier and reconnect evidence, and corrected two
+> statements in the 16 September record. Nothing below has been rewritten to match
+> either.
 
 ### 0.1 ⚠ This is a historical field-survey report, not an architecture decision
 

@@ -14,6 +14,8 @@ On **15 September 2026** a Sysmex XN-550 was physically connected to a survey PC
 
 A **second session on 16 September 2026** performed structured physical validation with full packet capture and a byte-exact listener — see [`VALIDATION_2026-09-16.md`](VALIDATION_2026-09-16.md). It captured 7 messages (4 distinct payloads), settled the transport-role and framing questions for this configuration, and confirmed the `O`-4 identifier mapping against ground truth declared *before* transmission. **It closed no milestone and no release gate:** M9.2 and M9.3b are BC-5150-scoped and untouched, and `T-CORPUS-01-03` remains unsatisfied.
 
+A **third session on 17 September 2026** — see [`VALIDATION_2026-09-17.md`](VALIDATION_2026-09-17.md) — used ground truth declared before every action. It showed that a same-day manual retransmission is byte-identical, recorded a same-patient / different-sequence observation (**not** a rerun), found a cross-day 4-byte difference in an image-path folder date, and observed a reconnect after a physical link interruption (**PARTIALLY VERIFIED**, cause confounded). It also corrected two statements in the 16 September record. Again, no milestone or gate was closed.
+
 This establishes the XN-550 as the **second instrument in this project with any field evidence at all** (after the Mindray BC-5150), and it answers the first question `docs/09` §11.3 says must be answered before parser work: *which side initiates the connection?*
 
 **What this does not do:** it does not make the XN-550 integrable today. There is no XN-550 parser, no configuration entry, and — most consequentially — the observed transport direction is the opposite of what the current LIS supports. See §6.
@@ -74,39 +76,47 @@ Each of these was observed on the physical instrument on 15 September 2026:
 
 ## 5. Evidence status table
 
-**Two sessions now exist.** Session 1 = the survey of 15 September 2026
+**Three sessions now exist.** Session 1 = the survey of 15 September 2026
 ([`FIELD_REPORT.md`](FIELD_REPORT.md)). Session 2 = the physical validation of
-16 September 2026 ([`VALIDATION_2026-09-16.md`](VALIDATION_2026-09-16.md)), which
-resolved several items below and is the authoritative source for every row marked
-"session 2".
+16 September 2026 ([`VALIDATION_2026-09-16.md`](VALIDATION_2026-09-16.md)). Session 3 =
+the controlled validation of 17 September 2026
+([`VALIDATION_2026-09-17.md`](VALIDATION_2026-09-17.md)). Each is the authoritative
+source for the rows that cite it.
 
 | Item | Status | Note |
 |---|---|---|
-| TCP/IP connectivity | **VERIFIED** | Sessions 1 and 2 |
+| TCP/IP connectivity | **VERIFIED** | Sessions 1, 2 and 3 |
 | XN-550 → LIS transmission | **VERIFIED** | Instrument-initiated; session 2 recorded the dial pattern (5 SYNs ~508 ms, ~60 s cycle) |
 | ASTM message reception | **VERIFIED** | Complete messages, `L|1|N` terminator |
 | `H`/`P`/`O`/`R`/`L` structure observed | **VERIFIED** | `C` records also present |
-| Raw patient-result capture | **VERIFIED** | Session 1: 1 message. Session 2: 7 messages, 4 distinct payloads |
+| Raw patient-result capture | **VERIFIED** | Session 1: 1 message. Session 2: 7 messages, 4 distinct payloads. Session 3: 4 messages, 3 distinct payloads |
 | Experimental ACK handling | **VERIFIED** | ACK-only, permissive, **per socket read** — not per ASTM message |
 | ASTM 1381-95 framing in observed payloads | **VERIFIED — absent** *(this configuration only)* | Session 2, pcap + byte census across 7 messages. **Not a claim that the XN-550 never uses E1381** — other output settings untested |
 | Instrument's native E1381 handshake semantics | **NOT FIELD-VERIFIED** | Our ACK is application-level only |
 | NACK handling | **NOT FIELD-VERIFIED** | No NAK path exists in the tooling; never authorised |
 | Whether XN-550 accepts inbound connections **on port 5001** | **VERIFIED — it does not** | Session 2: LIS SYNs silently dropped, no RST. **Scope: port 5001 only** |
 | Whether XN-550 accepts inbound on any *other* port | **UNKNOWN / NOT CONFIRMED** | No port scan performed — not authorised, not appropriate |
-| Multiple messages per connection | **VERIFIED** | Session 2: 7 messages over one 41-minute session, no reconnect |
-| Persistent idle session, no heartbeat | **VERIFIED** | Session 2: connection held with 0 bytes exchanged |
-| Transmission/message control identifier | **VERIFIED — none exists** | `H`-3 … `H`-12 empty across 7 independent messages |
-| On-screen Sample No. → `O`-4 component 3 | **VERIFIED** | Session 2 GT-2, matched against ground truth declared **before** transmission |
-| Lab practice: Sample No. holds a personal name | **CANDIDATE** | One lab, one operator, two sessions. See §5.1 and the S1 hazard |
-| `R`-13 = analysis time, not transmission time | **VERIFIED** | Session 2 GT-2: ~16½ min between analysis and transmission |
-| On-screen sequence number transmitted? | **VERIFIED — it is not** | Session 2 GT-2: appears in no field |
-| Exact semantics of the patient identifier field (`P`-5) | **UNKNOWN / NOT CONFIRMED** | Populated in session 1, empty in session 2. See §5.1 |
+| Multiple messages per connection | **VERIFIED** | Session 2: 7 messages over one 41-minute session, no reconnect. Session 3: 4 messages over one session |
+| Persistent idle session, no heartbeat | **VERIFIED** | Sessions 2 and 3: connection held with 0 bytes exchanged; no TCP keepalive frames captured |
+| Transmission/message control identifier field | **VERIFIED — none exists** | `H`-3 (control id) empty in every message; `H`-5 (sender / instrument information) **is** populated. *Corrected in session 3 — previously stated as "`H`-3 … `H`-12 empty"* |
+| One selected-result transmit → one message | **VERIFIED** | Session 2 GT-2; session 3 GT-1, Seq 51, Seq 58 |
+| Same-day manual retransmission | **VERIFIED — byte-identical** | Session 3 GT-1 → GT-2: 0 differing bytes. One controlled pair |
+| Transmission-/day-varying content | **VERIFIED — exists at day granularity** | Session 3: Seq 58 vs session-2 message A differ in 4 bytes, the image-path folder date. **Meaning UNKNOWN**; whether both are the same analysis is a **hypothesis** |
+| On-screen Sample No. → `O`-4 component 3 | **VERIFIED** | Session 2 GT-2; session 3 GT-1/GT-2, Seq 51, Seq 58 — each against ground truth declared **before** transmission |
+| Independent specimen identifier in the message | **VERIFIED — none observed** | Session 3 GT-3A: `O`-3 empty, no patient id, no control id, sequence not sent; `O`-4 is the only identity-like field that differed |
+| Lab practice: Sample No. holds a personal name | **CANDIDATE** | One lab, operator-entered free text. See §5.1 and the S1 hazard |
+| `R`-13 = analysis time, not transmission time | **VERIFIED** | Session 2 GT-2: ~16½ min. Session 3: ~6.6 h (Seq 68); previous-day analyses (Seq 51, 58) |
+| On-screen sequence number transmitted? | **VERIFIED — it is not** | Session 2 GT-2; session 3 Seq 68, 51, 58: appears in no field |
+| Exact semantics of the patient identifier field (`P`-5) | **UNKNOWN / NOT CONFIRMED** | Populated in session 1, empty in sessions 2 and 3. See §5.1 |
 | Exact semantics of `O`-3 | **UNKNOWN / NOT CONFIRMED** | Empty in every message observed |
-| Genuine rerun behaviour | **NOT FIELD-VERIFIED** | Never performed |
+| Genuine rerun behaviour | **NOT FIELD-VERIFIED** | Never performed. Session 3 GT-3A was a same-patient / different-sequence observation, **not** a rerun |
+| Pending results sent automatically on connection | **CANDIDATE — not observed** | Session 3: 0 bytes for ~25 min despite analyst-reported pending results; single observation |
 | Historical host query (LIS → instrument request) | **NOT FIELD-VERIFIED** | Never attempted |
-| Historical resend behaviour | **NOT FIELD-VERIFIED** | Never attempted |
+| Historical / cross-day resend behaviour | **NOT FIELD-VERIFIED** | Only a same-day manual retransmission was controlled (row above) |
+| Send-all / queue-flush behaviour | **NOT FIELD-VERIFIED** | Never used |
 | ACK-timeout retransmission behaviour | **NOT FIELD-VERIFIED** | ACK never withheld |
-| Reconnect / idle-socket / connection-limit behaviour | **NOT FIELD-VERIFIED** | Session-2 disconnects were cable events, **not** instrument behaviour |
+| Reconnect after disconnect | **PARTIALLY VERIFIED** | Session 3: LIS-side RST → no reconnect in 5 min 16 s; after a physical link interruption the instrument opened a new session (1 SYN, new source port), no payload. **Cause confounded.** Session-2 disconnects were cable/adapter events, not instrument behaviour |
+| Instrument-initiated disconnect; idle-socket timeout; connection limits | **NOT FIELD-VERIFIED** | Never observed |
 | QC message classification | **NOT FIELD-VERIFIED** | Zero QC captures |
 | Calibration classification | **NOT FIELD-VERIFIED** | Zero captures |
 | Maintenance / startup classification | **NOT FIELD-VERIFIED** | Zero captures |
@@ -121,6 +131,7 @@ The survey report's legend states that `P` carries the patient identity and `O` 
 - **`O`-3, the ASTM specimen-id field, is empty**;
 - **`P`-5 holds a bare numeric id** whose meaning is unknown (hospital MRN? instrument-local sequence? worklist key?);
 - **no barcode or specimen identifier is identifiable anywhere** in the message.
+- **the Sample No. is also embedded in the four graphic-reference `R`-4 paths** (`…_<Sample No.>_<type>.PNG`), so those values are PHI in raw evidence (session 3; masked in the committed fixture).
 
 This is the XN-550 equivalent of the identity question `docs/09` §10 raises for the BC-5150, and it is **unresolved**. Any parser that maps these fields is guessing until a corpus with known ground truth exists. Do not let the report's legend stand in for evidence.
 
@@ -153,11 +164,11 @@ In the order they should be answered. Items 1 and 2 are the ones that can invali
 2. ~~**Is ASTM 1381-95 framing present on the wire?**~~ **Answered for this configuration by session 2** — no `STX`/`ETX`/`ENQ`/`EOT`/`ACK`/`NAK`/checksum bytes appear in any observed payload; records are `CR`-terminated. **Still open:** behaviour under other instrument output settings, and the instrument's native E1381 handshake semantics, which our application-level ACK cannot establish.
 3. **Identity semantics** — **partly answered.** `O`-4 component 3 is **VERIFIED** as the on-screen *Sample No.* (session 2 GT-2, pre-registered). **Still open:** what `P`-5 holds and why its population differs between sessions; what `O`-3 is intended for; and whether any specimen/tube barcode is transmitted at all. Requires a corpus with known ground truth.
 4. **ACK dependence** — what does the instrument do when an ACK is delayed, withheld, or replaced by a NAK? *(Same class of question as BC-5150 T-BC-T, which is gated on lab-management approval to withhold an ACK on a live instrument.)*
-5. **Retransmission and resend** — repeat-run vs retransmission, reconnect resend, ACK-timeout resend. **Feeds M9.2; does not resolve it.**
+5. **Retransmission and resend** — **partly answered:** a same-day manual retransmission is byte-identical (session 3), and a cross-day comparison shows a 4-byte image-path folder-date difference. **Still open:** genuine rerun vs retransmission, cross-day resend as a rule, reconnect resend, ACK-timeout resend. **Feeds M9.2; does not resolve it.**
 6. **QC / calibration / maintenance / startup message shapes** — currently zero captures. **Feeds M9.3b; does not resolve it.**
 7. **Historical host query** — whether the instrument supports a LIS-initiated request for prior results, and in what dialect. Never attempted.
-8. **Message corpus** — `docs/09` T-CORPUS-01-03 requires **≥20 messages across categories**. One exists.
-9. **Multiple messages per connection**, reconnect behaviour, idle-socket behaviour, connection limits, ordering guarantees — every row of `docs/09` §11.2 is still open for this instrument.
+8. **Message corpus** — `docs/09` T-CORPUS-01-03 requires **≥20 messages across categories**. **12 exist** (1 + 7 + 4) plus one uncontrolled message of unknown class — 8 distinct patient-result payloads, zero QC / calibration / maintenance / startup.
+9. **Connection behaviour** — multiple messages per connection is **VERIFIED**; reconnect after a physical link interruption is **PARTIALLY VERIFIED** (cause confounded). **Still open:** instrument-initiated disconnect, idle-socket timeout, connection limits, ordering guarantees.
 
 > **None of the following is solved by this survey, and no document in this directory may be cited as solving it:** host query, historical reconciliation, retransmission semantics, deduplication (M9.2), QC or calibration filtering (M9.3b), specimen identity, or Gateway/reconciliation. Vendor or report *claims* that the instrument supports a capability are **CLAIMED**, never VERIFIED.
 
@@ -178,7 +189,7 @@ A test-only contract pins what the capture structurally **is**, so that a future
 | Record inventory | Exactly `H`×1, `P`×1, `O`×1, `C`×3, `R`×42, `L`×1 — 49 total |
 | Record ordering | The exact sequence `H P C O C R×42 C L`; H first, L last, P before O before the first R |
 | Control records | All three `C` records survive as `C`, are never counted as `R`, and sit after P, after O, and after the final R |
-| Delimiters | `H`-2 declares `\^&`; the repeat `\` is used in `O`-4, the component `^` in `R`-2, the escape `&` inside graphic result values |
+| Delimiters | `H`-2 declares `\^&`; the repeat `\` is used in `O`-5 (the test-code list), the component `^` in `R`-2, the escape `&` inside graphic result values |
 | `R` field layout | All 42 records have the same 13 fields; `R`-1 runs 1..42 contiguously |
 | Extraction | Test name (`R`-2 component 5), value (`R`-3), units (`R`-4), abnormal flag (`R`-6), status (`R`-8), timestamp (`R`-12), with spot-checks across all three observed flag states |
 | Uniform fields | Every result is final (`F`), same operator id (`lab`), one shared run timestamp parseable as `%Y%m%d%H%M%S` |
@@ -187,6 +198,8 @@ A test-only contract pins what the capture structurally **is**, so that a future
 | Fail-closed guard | The registry still holds only `bc5150_hl7`; `xn550_astm`, `sysmex_xn550` and `astm_generic` all raise `ParserNotRegisteredError` |
 
 The contract was mutation-checked: converting one `C` record to an `R` record fails 12 tests, and reintroducing PHI fails 2.
+
+> **`R`-field numbering in this table** follows the contract test's docstrings, which count from the first field *after* the record type — one lower than ASTM numbering. ASTM equivalents: sequence `R`-2, test id `R`-3, value `R`-4, units `R`-5, reference range `R`-6, abnormal flag `R`-7, status `R`-9, operator `R`-11, timestamp `R`-13. The `H`, `P` and `O` numbers above are already ASTM numbering, as are all `R` numbers in the validation records.
 
 ### 8.2 What the contract intentionally leaves unresolved
 
@@ -213,12 +226,15 @@ All three `C` records in this capture are `C|1||`: structurally present, **paylo
 | Path | Contents |
 |---|---|
 | [`FIELD_REPORT.md`](FIELD_REPORT.md) | Full imported survey report, with PHI redacted and superseded sections marked |
+| [`VALIDATION_2026-09-16.md`](VALIDATION_2026-09-16.md) | Session 2 record — transport role, framing, `O`-4 mapping (with corrections dated 2026-09-17) |
+| [`VALIDATION_2026-09-17.md`](VALIDATION_2026-09-17.md) | Session 3 record — controlled retransmission, GT-3A, cross-day comparison, RECONNECT-01/02 |
 | [`../../../backend/tests/fixtures/instruments/sysmex_xn550/patient_result_001.astm`](../../../backend/tests/fixtures/instruments/sysmex_xn550/patient_result_001.astm) | Redacted raw ASTM patient-result message, 2 824 bytes, 49 records |
 | [`../../../backend/tests/test_xn550_astm_contract.py`](../../../backend/tests/test_xn550_astm_contract.py) | Fixture contract — 16 tests, DB-free, no production code exercised (§8) |
 
 ### 9.1 Fixture notes
 
 - **Redacted, per `docs/09` §12.4**, which permits only redacted or synthetic derivatives in this repository. Three PHI tokens are replaced with **length-preserving** `X` masks: patient name (5 occurrences), patient id (1), date of birth (1) — **43 bytes of 2 824**. Every delimiter, field position, record length, clinical value, unit, flag, parameter name and timestamp is **unchanged**.
+- **Masking re-verified on 17 September 2026:** session 3 showed that the Sample No. is embedded in the four graphic-reference `R`-4 paths. In this fixture, `O`-4 and all four image-path name segments are masked (`XXXXXX`).
 - **Line endings are bare `\r`, deliberately.** That is what the instrument sent. Read the file as **bytes**, not with universal newlines, or the record structure will be silently altered.
 - SHA-256, committed fixture: `2fcc8f38de8d6903595b5e876e00de352ace7005b805739486a22106ce543ad3`
 - SHA-256, unredacted original: `6f6cf24905eb0a0761f07e2ed534ea90374f039ad023afa6eb398401ec6742a8` — retained only in `D:\SurveyLIS`, outside this repository.
