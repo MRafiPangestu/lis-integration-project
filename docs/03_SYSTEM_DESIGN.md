@@ -231,6 +231,31 @@ Instrument I ──► Connection Handler I
 
 Kegagalan komunikasi pada satu instrumen tidak boleh menghentikan proses komunikasi instrumen lainnya.
 
+### 4.3 Instrument Status Model
+
+Status instrumen memiliki **dua sumbu yang berbeda** dan tidak boleh dicampur. Keduanya menjawab pertanyaan yang berbeda:
+
+| Sumbu | Pertanyaan | Nilai | Disimpan? |
+|---|---|---|---|
+| **Transport / runtime state** | Apa yang sedang dilakukan *worker* integrasi LIS? | `CONNECTED` · `LISTENING` · `RECONNECTING` · `DISCONNECTED` · `UNKNOWN` | Ya — `instruments.connection_status` |
+| **Instrument connection state** | Apakah **saat ini ada sesi komunikasi aktif** dengan alat? | `CONNECTED` · `DISCONNECTED` · `UNKNOWN` | **Tidak** — diturunkan |
+
+**Kosakata transport bersifat spesifik per mode.** Hanya instrumen mode *listener* (mis. XN-550) yang pernah melaporkan `LISTENING`; hanya mode *client* (mis. BC-5150) yang melaporkan `DISCONNECTED` dari loop-nya sendiri. Karena itu satu kenyataan fisik yang sama — alat tidak terhubung — dulu muncul sebagai dua kata berbeda, dan operator tidak bisa membandingkan antar alat.
+
+**Connection state diturunkan, bukan disimpan** (`backend/app/integration/instrument_status.py`). Aturannya tunggal dan total: `CONNECTED` hanya bila transport state `CONNECTED`; `UNKNOWN` hanya bila transport state tidak dikenal atau `NULL`; selebihnya `DISCONNECTED`. Penurunan dipilih daripada kolom kedua karena kolom kedua bisa *drift* dan tidak ada cara menentukan mana yang benar — nilai turunan tidak mungkin berselisih dengan sumbernya.
+
+```text
+XN-550  listener siap, tanpa sesi   transport=LISTENING      connection=DISCONNECTED
+XN-550  sesi aktif                  transport=CONNECTED      connection=CONNECTED
+BC-5150 gagal menyambung, retry     transport=RECONNECTING   connection=DISCONNECTED
+BC-5150 service berhenti            transport=DISCONNECTED   connection=DISCONNECTED
+belum pernah dilaporkan             transport=UNKNOWN        connection=UNKNOWN
+```
+
+`GET /api/instruments/status` mengembalikan keduanya: `connection_status` (transport) dan `instrument_connection_state` (turunan). Frontend memakai **connection state sebagai label utama** dan transport state sebagai detail sekunder, sehingga operator tidak perlu memahami `LISTENING` atau `RECONNECTING` untuk menjawab "apakah alat ini terhubung?".
+
+**Batas keandalan (penting).** Kedua nilai adalah *state terakhir yang dipersistensi*, bukan hasil *probe* langsung. Tidak ada *heartbeat*. Bila layanan integrasi dimatikan paksa tanpa *shutdown* normal, baris database tetap memegang nilai terakhirnya — sesi yang sudah mati bisa terbaca `CONNECTED` sampai alat menyambung ulang atau layanan dijalankan lagi (kontrak XN-550 §4.7). Pada *shutdown* normal, supervisor menulis `DISCONNECTED` untuk setiap instrumen, sehingga kasus itu tertangani. `last_status_at` mencatat **kapan status terakhir berubah**, bukan kapan alat terakhir terlihat, dan merupakan satu-satunya sinyal keusangan yang tersedia.
+
 ---
 
 ## 5. Data Flow

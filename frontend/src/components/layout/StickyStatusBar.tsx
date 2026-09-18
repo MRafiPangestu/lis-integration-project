@@ -1,23 +1,12 @@
 import React from "react";
 import type { InstrumentStatusResponse } from "../../types/api";
+import { presentInstrumentStatus } from "./instrumentStatus";
 
 export interface StickyStatusBarProps {
   instrumentStatuses: InstrumentStatusResponse[] | null;
   loading: boolean;
   error: Error | null;
   onRetry: () => Promise<void>;
-}
-
-function statusColor(status: string): string {
-  switch (status.toUpperCase()) {
-    case "CONNECTED":
-      return "var(--color-flag-normal)";
-    case "RECONNECTING":
-    case "DISCONNECTED":
-      return "var(--color-flag-low)";
-    default:
-      return "var(--color-text-secondary)";
-  }
 }
 
 export const StickyStatusBar: React.FC<StickyStatusBarProps> = ({
@@ -65,12 +54,16 @@ export const StickyStatusBar: React.FC<StickyStatusBarProps> = ({
           </>
         ) : instrumentStatuses && instrumentStatuses.length > 0 ? (
           instrumentStatuses.map((instrument) => {
-            const status = instrument.connection_status.trim() || "UNKNOWN";
+            const presented = presentInstrumentStatus(
+              instrument.instrument_connection_state,
+              instrument.connection_status,
+            );
 
             return (
               <span
                 key={instrument.id_instrument}
-                aria-label={`${instrument.nama_mesin} status: ${status}`}
+                aria-label={`${instrument.nama_mesin} status: ${presented.summary}`}
+                title={presented.summary}
                 style={{
                   alignItems: "center",
                   display: "inline-flex",
@@ -78,8 +71,8 @@ export const StickyStatusBar: React.FC<StickyStatusBarProps> = ({
                   marginRight: "var(--space-3)",
                 }}
               >
-                <span aria-hidden="true" style={{ color: statusColor(status) }}>●</span>
-                <span>{instrument.nama_mesin}: {status}</span>
+                <span aria-hidden="true" style={{ color: presented.color }}>●</span>
+                <span>{instrument.nama_mesin}: {presented.primary}</span>
               </span>
             );
           })

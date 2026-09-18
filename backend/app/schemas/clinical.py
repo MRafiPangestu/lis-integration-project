@@ -37,7 +37,16 @@ class InstrumentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 class InstrumentStatusResponse(InstrumentResponse):
+    # Transport / runtime state of the integration worker: CONNECTED,
+    # LISTENING, RECONNECTING, DISCONNECTED, or UNKNOWN when never reported.
+    # Mode-specific by design — only a listener reports LISTENING.
     connection_status: str
+    # Operator-facing answer to "is there an active session with the
+    # instrument?" — CONNECTED, DISCONNECTED or UNKNOWN. Derived from
+    # connection_status, never stored (app/integration/instrument_status.py).
+    instrument_connection_state: str
+    # When connection_status last *changed*, not when the instrument was last
+    # seen. Both values are last-persisted, not a live probe.
     last_status_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 

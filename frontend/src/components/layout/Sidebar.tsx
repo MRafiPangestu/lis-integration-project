@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import type { InstrumentStatusResponse } from "../../types/api";
+import { presentInstrumentStatus } from "./instrumentStatus";
 
 export interface SidebarProps {
   instruments: InstrumentStatusResponse[] | null;
@@ -12,32 +13,10 @@ export interface SidebarProps {
   expanded?: boolean;
 }
 
-// Mirrors StickyStatusBar.statusColor(): the same three-value vocabulary plus
-// the backend's UNKNOWN fallback, and LISTENING for a listener-mode instrument
-// (XN-550) that is bound but has no active session (contract §4.10).
-// StickyStatusBar itself is left untouched.
-function statusColor(status: string): string {
-  switch (status.trim().toUpperCase()) {
-    case "CONNECTED":
-      return "var(--color-flag-normal)";
-    case "LISTENING":
-      return "var(--color-primary)";
-    case "RECONNECTING":
-    case "DISCONNECTED":
-      return "var(--color-flag-low)";
-    default:
-      return "var(--color-text-secondary)";
-  }
-}
-
-// Human-readable status text. Only LISTENING needs an explanation.
-function statusLabel(status: string): string {
-  return status === "LISTENING" ? "Listening — no instrument session" : status;
-}
-
-function normalizeStatus(status: string): string {
-  return status.trim() || "UNKNOWN";
-}
+// Status presentation lives in ./instrumentStatus so the sidebar and the
+// sticky bar answer the operator's question the same way: the primary label
+// is always the instrument connection state, and the transport state
+// (LISTENING, RECONNECTING, …) is secondary detail.
 
 function useIsNarrow(): boolean {
   const query = "(max-width: 900px)";
@@ -246,8 +225,11 @@ export function Sidebar({
           instruments.map((instrument) => {
             const isActive = instrument.id_instrument === activeInstrumentId;
             const isHovered = instrument.id_instrument === hoveredId;
-            const status = normalizeStatus(instrument.connection_status);
-            const dotColor = statusColor(status);
+            const presented = presentInstrumentStatus(
+              instrument.instrument_connection_state,
+              instrument.connection_status,
+            );
+            const dotColor = presented.color;
             const highlighted = isActive || isHovered;
 
             return (
@@ -262,7 +244,7 @@ export function Sidebar({
                   )
                 }
                 aria-current={isActive ? "page" : undefined}
-                title={`${instrument.nama_mesin} — ${statusLabel(status)}`}
+                title={`${instrument.nama_mesin} — ${presented.summary}`}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -293,14 +275,14 @@ export function Sidebar({
                     background: dotColor,
                     color: dotColor,
                     boxShadow:
-                      isActive && status === "CONNECTED"
+                      isActive && presented.tone === "connected"
                         ? "0 0 6px currentColor"
                         : undefined,
                   }}
                 />
                 {collapsed ? (
                   <span style={srOnly}>
-                    {instrument.nama_mesin} — {statusLabel(status)}
+                    {instrument.nama_mesin} — {presented.summary}
                   </span>
                 ) : (
                   <span style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
@@ -322,8 +304,22 @@ export function Sidebar({
                         opacity: 0.8,
                       }}
                     >
-                      {statusLabel(status)}
+                      {presented.primary}
                     </span>
+                    {presented.detail ? (
+                      <span
+                        style={{
+                          fontSize: "0.625rem",
+                          color: "var(--color-sidebar-text)",
+                          opacity: 0.6,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {presented.detail}
+                      </span>
+                    ) : null}
                   </span>
                 )}
               </button>

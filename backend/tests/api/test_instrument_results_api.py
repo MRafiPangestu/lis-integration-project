@@ -332,6 +332,63 @@ def test_instrument_status_normalises_listening(client, analyst, data):
     assert statuses[data["bc"]] == "UNKNOWN"
 
 
+def _status_rows(client, analyst):
+    response = client.get("/api/instruments/status", headers=analyst)
+    assert response.status_code == 200, response.text
+    return {row["id_instrument"]: row for row in response.json()}
+
+
+def _set_transport(by_id: dict) -> None:
+    with TestingSessionLocal() as session:
+        for id_instrument, value in by_id.items():
+            session.get(Instrument, id_instrument).connection_status = value
+        session.commit()
+
+
+def test_api_reports_both_axes_without_collapsing_them(client, analyst, data):
+    """Transport state stays mode-specific; the connection state is comparable.
+
+    A listener with no session and a client retrying are the same thing to an
+    operator, and the API must say so without losing why.
+    """
+    _set_transport({data["xn"]: "LISTENING", data["bc"]: "RECONNECTING"})
+    rows = _status_rows(client, analyst)
+
+    assert rows[data["xn"]]["connection_status"] == "LISTENING"
+    assert rows[data["bc"]]["connection_status"] == "RECONNECTING"
+    assert rows[data["xn"]]["instrument_connection_state"] == "DISCONNECTED"
+    assert rows[data["bc"]]["instrument_connection_state"] == "DISCONNECTED"
+
+
+def test_active_session_is_the_only_connected_state(client, analyst, data):
+    _set_transport({data["xn"]: "CONNECTED", data["bc"]: "DISCONNECTED"})
+    rows = _status_rows(client, analyst)
+
+    assert rows[data["xn"]]["instrument_connection_state"] == "CONNECTED"
+    assert rows[data["bc"]]["instrument_connection_state"] == "DISCONNECTED"
+
+
+def test_session_close_leaves_the_listener_up_but_disconnects_the_instrument(client, analyst, data):
+    _set_transport({data["xn"]: "CONNECTED"})
+    assert _status_rows(client, analyst)[data["xn"]]["instrument_connection_state"] == "CONNECTED"
+
+    # The listener returns to LISTENING when the session closes (contract §4.4).
+    _set_transport({data["xn"]: "LISTENING"})
+    row = _status_rows(client, analyst)[data["xn"]]
+    assert row["connection_status"] == "LISTENING", "the listener is still up"
+    assert row["instrument_connection_state"] == "DISCONNECTED", "but no instrument is on it"
+
+
+@pytest.mark.parametrize("stored", [None, "SOMETHING_ELSE", "", "connected"])
+def test_unknown_transport_never_reports_as_connected(client, analyst, data, stored):
+    _set_transport({data["bc"]: stored})
+    row = _status_rows(client, analyst)[data["bc"]]
+
+    assert row["connection_status"] == "UNKNOWN"
+    assert row["instrument_connection_state"] == "UNKNOWN"
+    assert row["instrument_connection_state"] != "CONNECTED"
+
+
 # --------------------------------------------------------------------------- #
 # Import guard: no clinical model, schema or repository (§12.3, B.5)
 # --------------------------------------------------------------------------- #

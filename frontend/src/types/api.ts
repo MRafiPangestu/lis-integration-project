@@ -64,7 +64,13 @@ export interface InstrumentResponse {
 }
 
 export interface InstrumentStatusResponse extends InstrumentResponse {
+  // Transport / runtime state of the integration worker. Mode-specific:
+  // only a listener-mode instrument ever reports LISTENING.
   connection_status: string
+  // Operator-facing: is there an active session with the instrument?
+  // CONNECTED | DISCONNECTED | UNKNOWN. Derived server-side, never stored.
+  instrument_connection_state: string
+  // When connection_status last changed — not when the instrument was seen.
   last_status_at: string | null
 }
 

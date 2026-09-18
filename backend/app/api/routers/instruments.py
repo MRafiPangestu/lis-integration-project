@@ -6,6 +6,7 @@ from sqlalchemy import select
 from typing import List
 
 from app.core.database import get_db
+from app.integration.instrument_status import derive_connection_state, normalize_transport_state
 from app.models.instrument import Instrument
 from app.schemas.clinical import InstrumentStatusResponse
 from app.schemas.overview import PaginatedOrderOverviewResponse
@@ -20,26 +21,22 @@ def get_instruments_status(db: Session = Depends(get_db)):
     
     results = []
     for inst in instruments:
-        # LISTENING: a listener-mode instrument (XN-550) is bound and waiting,
-        # with no active session (contract §4.10). Additive value.
-        valid_statuses = {"CONNECTED", "RECONNECTING", "DISCONNECTED", "LISTENING"}
-        
-        if inst.connection_status is None:
-            norm_status = "UNKNOWN"
-        elif inst.connection_status in valid_statuses:
-            norm_status = inst.connection_status
-        else:
-            norm_status = "UNKNOWN"
-            
+        # Two axes, one source of truth. `connection_status` is the transport /
+        # runtime state the worker persisted — mode-specific, so LISTENING only
+        # ever comes from a listener (XN-550 contract §4.4, §4.10). The
+        # operator-facing connection state is derived from it, never stored.
+        transport_state = normalize_transport_state(inst.connection_status)
+
         results.append({
             "id_instrument": inst.id_instrument,
             "nama_mesin": inst.nama_mesin,
             "protokol": inst.protokol,
             "tipe_koneksi": inst.tipe_koneksi,
-            "connection_status": norm_status,
+            "connection_status": transport_state,
+            "instrument_connection_state": derive_connection_state(transport_state),
             "last_status_at": inst.last_status_at
         })
-        
+
     return results
 
 @router.get(
