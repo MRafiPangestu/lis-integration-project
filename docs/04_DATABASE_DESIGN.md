@@ -1545,7 +1545,7 @@ Jalur migrasi:
 
 ## 29.3. Database development yang sudah ada
 
-`lis_marina_permata_dev` berada pada `5d2e8b7c41a9` (XN-550 Phase 1 — sebelumnya `28aa370f5dbe` pada M9.1b, `27e00bcff992` pada M9.1a, dan `4aff9e134f16` sebelum itu). Revisi `8a3023944bd1` (XN-550 G2) **belum** diterapkan di sana: jalankan `alembic upgrade head` terhadap database ini saat siap. R0 adalah **leluhur** revisi tersebut, bukan migrasi yang perlu diputar ulang. **Jangan** menjalankan R0 langsung terhadap database ini. Jika ada revisi baru di masa depan, `alembic upgrade head` biasa akan melanjutkan dari revisi saat ini.
+`lis_marina_permata_dev` berada pada `8a3023944bd1` (XN-550 G2 — sebelumnya `5d2e8b7c41a9` pada XN-550 Phase 1, `28aa370f5dbe` pada M9.1b, `27e00bcff992` pada M9.1a, dan `4aff9e134f16` sebelum itu). *Upgrade* ke `8a3023944bd1` dijalankan pada 2026-09-18 dengan `alembic upgrade head`: aditif saja (dua tabel baru, keduanya kosong), seluruh data yang ada tidak berubah, dan tidak ada operasi destruktif. R0 adalah **leluhur** revisi tersebut, bukan migrasi yang perlu diputar ulang. **Jangan** menjalankan R0 langsung terhadap database ini. Jika ada revisi baru di masa depan, `alembic upgrade head` biasa akan melanjutkan dari revisi saat ini.
 
 ## 29.4. Database PoC stabil / sumber evidence
 
@@ -1853,4 +1853,4 @@ Sejak XN-550 G2 (Bagian 36), tahap T2 yang sama juga mengisi `duplicate_of_messa
 
 **Index.** `(id_instrument, fingerprint_version, analysis_fingerprint, id_result_set)` untuk pencarian sidik jari; `(received_at DESC, id_result_set DESC)` dan `(id_instrument, received_at DESC, id_result_set DESC)` untuk daftar API. **Sengaja tidak ada** index pada `sample_label`, tidak ada index `(id_result_set)` terpisah pada *item* (sudah dilayani index bawaan `UNIQUE`), dan tidak ada `UNIQUE` pada kolom konten mana pun.
 
-**Status.** Tabel ini hanya terisi bila `ingestion_stage = "observations"` (G2), dan saat ini hanya diisi di lingkungan pengembangan dan pengujian. Belum ada *deployment* produksi (kontrak §19.9). Bila nanti produksi dipasang, konfigurasinya dimulai pada `raw_only` selama *soak* G1 — sehingga kedua tabel tetap kosong di produksi sampai gerbang §19.7 terpenuhi.
+**Status.** Tabel ini hanya terisi bila `ingestion_stage = "observations"` (G2), dan saat ini hanya diisi di lingkungan pengembangan dan pengujian — di DEV melalui simulator pengembangan (`backend/tests/simulate_xn550.py`), bukan instrumen fisik. Belum ada *deployment* produksi (kontrak §19.9). Bila nanti produksi dipasang, konfigurasinya dimulai pada `raw_only` selama *soak* G1 — sehingga kedua tabel tetap kosong di produksi sampai gerbang §19.7 terpenuhi.
