@@ -217,6 +217,8 @@ Classification of every unresolved item:
 
 ### Minimal additional field work required
 
+These experiments are planned in detail, with the capture structure and the session rules, in [`FIELD_VALIDATION_PLAN.md`](FIELD_VALIDATION_PLAN.md).
+
 **Yes — one short, scripted session is required.** Nothing can be skipped on the grounds that it was done for the XN-550, because the XN-550 answers do not transfer. But the session can be small, because the transcription tells us what to expect.
 
 | ID | Experiment | Answers | Why it cannot be skipped |
