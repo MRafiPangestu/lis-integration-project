@@ -105,11 +105,32 @@ def live(_schema):
     assert not thread.is_alive(), "listener thread did not stop"
 
 
+def settled(expected_messages: int) -> bool:
+    """Every expected row exists and none of them is still waiting for T2."""
+    with SessionTest() as session:
+        total = session.scalar(select(func.count()).select_from(InstrumentMessage))
+        pending = session.scalar(
+            select(func.count()).select_from(InstrumentMessage)
+            .where(InstrumentMessage.parse_status == "Pending")
+        )
+    return total == expected_messages and pending == 0
+
+
 def deliver(mode: str, port: int, **kwargs) -> None:
-    """Run one simulator mode against the live listener."""
-    payloads = simulator.messages_for(mode, kwargs.pop("count", 3))
+    """Run one simulator mode against the live listener, then wait for T2.
+
+    The listener acknowledges a read *before* it runs the post-commit hook
+    (`_send_acks` then `_on_raw_committed`), and the fragment left by a closed
+    connection is written later still. So the simulator returning proves only
+    that the bytes were read — never that the observation exists yet, which is
+    what every assertion below is about. A complete message waits at
+    `parse_status = 'Pending'` until T2 resolves it; a fragment is stored
+    `Failed` immediately.
+    """
+    payloads = simulator.messages_for(mode, kwargs.pop("count", 3), kwargs.pop("measured_flag", None))
     writes = simulator.writes_for(mode, payloads, kwargs.pop("chunk_size", 200))
     simulator.send(writes, port=port, verbose=False, **kwargs)
+    assert wait_for(lambda: settled(len(payloads))), "T2 did not finish for every delivery"
 
 
 def wait_for(predicate, timeout: float = WAIT, interval: float = 0.02):
@@ -239,8 +260,6 @@ def test_a_fragmented_transmission_is_reassembled_across_reads(live):
 def test_a_connection_closed_mid_message_persists_a_fragment_and_no_observation(live):
     deliver("close-mid-message", live["port"])
 
-    # The fragment is written when the peer closes, not while it is writing.
-    assert wait_for(lambda: len(rows(InstrumentMessage)) == 1), "no fragment was persisted"
     messages = rows(InstrumentMessage)
     assert len(messages) == 1
     assert messages[0].error_detail == FRAGMENT_INCOMPLETE_AT_CLOSE
