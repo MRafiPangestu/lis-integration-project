@@ -33,4 +33,5 @@ Thumbs.db
 # ========================
 # Claude Code (local only)
 # ========================
+.claude/
 CLAUDE.md
